@@ -1,17 +1,54 @@
-from typing import TypedDict, List, Optional, Literal, Annotated
-from pydantic import BaseModel, Field
+from typing import TypedDict, List, Optional, Literal, Dict, Any
+from pydantic import BaseModel, Field, validator
+from enum import Enum
 import operator
 
 # ============================================================================
-# GRAPH STATE DEFINITIONS
+# ENUMS FOR BETTER TYPE SAFETY
 # ============================================================================
 
-class ProblemRequirements(BaseModel):
-    """Yêu cầu đầu vào cho việc tạo đề bài"""
-    difficulty_level: str = Field(..., description="Độ khó: Easy/Medium/Hard")
-    topic: str = Field(..., description="Chủ đề chính: Graph, DP, String, Math, etc.")
-    constraints: str = Field(..., description="Giới hạn: n ≤ 10^5, time ≤ 2s, etc.")
-    special_requirements: Optional[str] = Field(None, description="Yêu cầu đặc biệt")
+class DifficultyLevel(str, Enum):
+    EASY = "Easy"
+    MEDIUM = "Medium"
+    HARD = "Hard"
+
+class OverallRating(str, Enum):
+    EXCELLENT = "EXCELLENT"
+    GOOD = "GOOD"
+    ACCEPTABLE = "ACCEPTABLE"
+    NEEDS_WORK = "NEEDS_WORK"
+    REJECT = "REJECT"
+
+# ============================================================================
+# BASE MODELS
+# ============================================================================
+
+class BaseStateModel(BaseModel):
+    """Base model with common configuration"""
+    
+    class Config:
+        use_enum_values = True
+        validate_assignment = True
+        extra = "forbid"
+
+class TestCase(BaseModel):
+    """Structured test case representation"""
+    input_data: str = Field(..., description="Input data for test case")
+    expected_output: str = Field(..., description="Expected output")
+    explanation: Optional[str] = Field("", description="Explanation of the test case")
+    is_sample: bool = Field(False, description="Whether this is a sample case")
+    is_edge_case: bool = Field(False, description="Whether this is an edge case")
+
+# ============================================================================
+# PROBLEM REQUIREMENTS AND IDEAS
+# ============================================================================
+
+class ProblemRequirements(BaseStateModel):
+    """Requirements for problem generation"""
+    difficulty_level: DifficultyLevel = Field(..., description="Difficulty level")
+    topic: str = Field(..., description="Main topic: Graph, DP, String, Math, etc.")
+    constraints: str = Field(..., description="Constraints: n ≤ 10^5, time ≤ 2s, etc.")
+    special_requirements: Optional[str] = Field("", description="Special requirements")
 
 class ProblemIdea(BaseModel):
     """Ý tưởng bài toán từ các nhà sáng tạo"""
@@ -25,13 +62,18 @@ class ProblemIdea(BaseModel):
     sample_output: str = Field(..., description="Output mẫu")
     
     # Analysis
-    key_insights: List[str] = Field(..., description="Các insight quan trọng")
+    key_insights: List[str] = Field(...,default_factory=list, description="Các insight quan trọng")
     time_complexity: str = Field(..., description="Độ phức tạp thời gian")
     space_complexity: str = Field(..., description="Độ phức tạp bộ nhớ")
     engagement_factor: str = Field(..., description="Tại sao bài này thú vị")
     
     # Metadata
     prerequisite_knowledge: List[str] = Field(default_factory=list, description="Kiến thức tiên quyết")
+
+
+# ============================================================================
+# EVALUATION AND SCORING
+# ============================================================================
 
 class ExpertEvaluation(BaseModel):
     """Đánh giá chuyên sâu từ Chief Problem Curator"""
@@ -51,9 +93,9 @@ class ExpertEvaluation(BaseModel):
     development_potential: float = Field(..., ge=0, le=5, description="Tiềm năng phát triển thành bài hoàn chỉnh (0-5)")
     
     # Expert feedback
-    key_strengths: List[str] = Field(..., min_items=2, max_items=4, description="2-4 điểm mạnh nổi bật")
+    key_strengths: List[str] = Field(...,default_factory=list, max_items=4, description="2-4 điểm mạnh nổi bật")
     major_concerns: List[str] = Field(default_factory=list, max_items=3, description="Tối đa 3 vấn đề chính (nếu có)")
-    improvement_suggestions: List[str] = Field(..., min_items=1, max_items=5, description="1-5 gợi ý cải thiện cụ thể")
+    improvement_suggestions: List[str] = Field(..., default_factory=list, max_items=5, description="1-5 gợi ý cải thiện cụ thể")
     
     # Decision rationale  
     decision_reasoning: str = Field(..., description="Lý do chi tiết cho quyết định này (2-3 câu)")
@@ -63,7 +105,19 @@ class ExpertEvaluation(BaseModel):
     
     # Optional rejection
     is_recommended: bool = Field(..., description="Có đề xuất phát triển thành bài hoàn chỉnh không")
-    rejection_reason: Optional[str] = Field(None, description="Lý do từ chối chi tiết (nếu không recommend)")
+    rejection_reason: Optional[str] = Field("", description="Lý do từ chối chi tiết (nếu không recommend)")
+
+
+# ============================================================================
+# COMPLETE PROBLEM DEFINITION
+# ============================================================================
+
+class TestCase(BaseModel):
+    input_data: str = Field(..., description="Input data for test case")
+    expected_output: str = Field(..., description="Expected output")
+    explanation: Optional[str] = Field("", description="Explanation of the test case")
+    is_sample: bool = Field(False, description="Whether this is a sample case")
+    is_edge_case: bool = Field(False, description="Whether this is an edge case")
 
 class CompleteProblem(BaseModel):
     """Đề bài hoàn chỉnh"""
@@ -76,8 +130,7 @@ class CompleteProblem(BaseModel):
     output_specification: str = Field(..., description="Mô tả output chi tiết")
     
     # Examples
-    sample_cases: List[dict] = Field(..., description="Các test case mẫu")
-    explanations: List[str] = Field(None, description="Giải thích từng sample cases")
+    sample_cases: List[TestCase] = Field(..., default_factory=list, description="Các test case mẫu")
     
     # Solution
     solution_approach: str = Field(..., description="Hướng giải quyết")
@@ -86,19 +139,23 @@ class CompleteProblem(BaseModel):
     space_complexity: str = Field(..., description="Độ phức tạp bộ nhớ")
     
     # Test cases
-    random_cases_program: List[str] = Field(..., description="Chương trình sinh bộ test cases ngẫu nhiên với số lớn")
-    edge_cases_program: List[str] = Field(..., description="Chương trình sinh các edge cases quan trọng")
+    random_cases_program: List[str] = Field(..., default_factory=list, description="Chương trình sinh bộ test cases ngẫu nhiên với số lớn")
+    edge_cases_program: List[str] = Field(..., default_factory=list, description="Chương trình sinh các edge cases quan trọng")
     
+
+# ============================================================================
+# FEEDBACK AND ASSESSMENT
+# ============================================================================
+
 class TesterFeedback(BaseModel):
     """Feedback từ thí sinh ảo"""
-    
     # Test results
     solved: bool = Field(..., description="Có giải được không")
     
     # Detailed feedback
     understanding_clarity: float = Field(..., ge=1, le=5, description="Độ rõ ràng đề bài (1-5)")
     difficulty_perception: str = Field(..., description="Cảm nhận về độ khó")
-    feedbacks: List[str] = Field(..., description="Feedback chi tiết")
+    feedbacks: List[str] = Field(..., default_factory=list, description="Feedback chi tiết")
     
     # Issues found
     ambiguities: List[str] = Field(default_factory=list, description="Điểm không rõ ràng")
@@ -124,51 +181,64 @@ class DifficultyAssessment(BaseModel):
     estimated_rating_range: str = Field(..., description="Ước tính rating range")
     
     # Analysis
-    required_algorithms: List[str] = Field(..., description="Thuật toán cần thiết")
-    key_challenges: List[str] = Field(..., description="Thách thức chính")
-    prerequisite_knowledge: List[str] = Field(..., description="Kiến thức tiên quyết")
-    potential_pitfalls: List[str] = Field(..., description="Lỗi thường gặp")
+    required_algorithms: List[str] = Field(..., default_factory=list, description="Thuật toán cần thiết")
+    key_challenges: List[str] = Field(..., default_factory=list, description="Thách thức chính")
+    prerequisite_knowledge: List[str] = Field(..., default_factory=list, description="Kiến thức tiên quyết")
+    potential_pitfalls: List[str] = Field(..., default_factory=list, description="Lỗi thường gặp")
     
     # Recommendations  
     target_audience: str = Field(..., description="Đối tượng phù hợp")
     estimated_solve_time: int = Field(..., description="Thời gian giải ước tính")
 
-class ProblemGenerationState(TypedDict):
+# ============================================================================
+# GENERATION METADATA
+# ============================================================================
+
+class GenerationMetadata(BaseModel):
+    """Metadata about the generation process"""
+    generation_start_time: Optional[str] = Field("", description="Start timestamp")
+    generation_end_time: Optional[str] = Field("", description="End timestamp")
+    total_ideas_generated: int = Field(0, description="Total ideas generated")
+    total_evaluations: int = Field(0, description="Total evaluations performed")
+    regeneration_count: int = Field(0, description="Number of regenerations")
+    revision_count: int = Field(0, description="Number of revisions")
+    final_rating: Optional[OverallRating] = Field("", description="Final rating")
+
+# ============================================================================
+# MAIN STATE DEFINITION
+# ============================================================================
+
+class ProblemGenerationState(BaseModel):
     """State chính của toàn bộ hệ thống"""
     
     # Input requirements
     requirements: ProblemRequirements
     
     # Ideas from creators
-    ideas: List[ProblemIdea]
+    ideas: List[ProblemIdea] = Field(default_factory=list)
     
     # Expert evaluation
-    expert_evaluations: List[ExpertEvaluation]
-    selected_idea: Optional[ProblemIdea]
-    regeneration_needed: bool
-    regeneration_count: int
+    expert_evaluations: List[ExpertEvaluation] = Field(default_factory=list)
+    selected_idea: Optional[ProblemIdea] = ""
+    regeneration_needed: bool = False
+    regeneration_count: int = 0
     max_regenerations: int
     
     # Problem development
-    complete_problem: Optional[CompleteProblem]
+    complete_problem: Optional[CompleteProblem] = ""
 
     # Testcases
-    testcases: List[dict]
+    testcases: List[dict] = Field(default_factory=list)
     
     # Testing phase
-    tester_feedbacks: List[TesterFeedback]
-    revision_needed: bool
-    revision_count: int
+    tester_feedbacks: List[TesterFeedback] = Field(default_factory=list)
+    revision_needed: bool = False
+    revision_count: int = 0
     max_revisions: int  # Limit để tránh infinite loop
     
-    # Assessment
-    # difficulty_assessment: Optional[DifficultyAssessment]
-    
     # Final output
-    final_problem: Optional[CompleteProblem]
-    # generation_metadata: dict  # Metadata về quá trình tạo
+    final_problem: Optional[CompleteProblem] = ""
     
     # Control flow
-    current_step: str  # Track current step for debugging
-    # error_messages: Annotated[List[str], operator.add]
-    status: Literal["in_progress", "completed", "failed"]
+    current_step: str = ""
+    status: Literal["in_progress", "completed", "failed"] = "in_progress"
