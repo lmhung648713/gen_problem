@@ -7,8 +7,8 @@ def create_problem_idea(creator: str, problem_requirements: ProblemRequirements)
     """
     Creates a problem idea based on the creator and problem requirements
     """
-    # Lớp output đã đúng: ProblemIdea
-    llm = gemini_2_flash(temperature=0.7).with_structured_output(ProblemIdea)
+    
+    llm = gpt_4o_mini(temperature=0.7).with_structured_output(ProblemIdea)
     prompt = CREATOR_PROMPTS[creator].format(problem_requirements=problem_requirements.model_dump_json())
     response = llm.invoke(prompt)
     return response
@@ -17,20 +17,21 @@ def evaluate_problem_idea(problem_requirements: ProblemRequirements, problem_ide
     """
     Evaluates a problem idea based on the problem requirements
     """
-    # SỬA LỖI: Lớp output được sửa thành ExpertEvaluation
-    llm = gemini_2_flash(temperature=0.7).with_structured_output(ExpertEvaluation)
+    
+    llm = gemini_2_5_pro(temperature=0.6).with_structured_output(ExpertEvaluation)
     prompt = problem_evaluator_prompt.format(problem_requirements=problem_requirements.model_dump_json(),
                                             problem_idea=problem_idea.model_dump_json())
     response = llm.invoke(prompt)
     return response
 
-def complete_problem(problem_idea: ProblemIdea) -> CompleteProblem:
+def complete_problem(problem_idea: ProblemIdea, problem_requirements: ProblemRequirements) -> CompleteProblem:
     """
     Completes a problem idea
     """
-    # SỬA LỖI: Lớp output được sửa thành CompleteProblem
-    llm = gemini_2_flash(temperature=0.7).with_structured_output(CompleteProblem)
-    prompt = problem_completer_prompt.format(problem_idea=problem_idea.model_dump_json())
+    
+    llm = gemini_2_5_pro(temperature=0.6).with_structured_output(CompleteProblem)
+    prompt = problem_completer_prompt.format(problem_idea=problem_idea.model_dump_json(),
+                                            problem_requirements=problem_requirements.model_dump_json())
     response = llm.invoke(prompt)
     return response
 
@@ -38,8 +39,8 @@ def test_problem(tester: str,complete_problem: CompleteProblem) -> TesterFeedbac
     """
     Tests a complete problem
     """
-    # SỬA LỖI: Lớp output được sửa thành TesterFeedback
-    llm = gemini_2_flash(temperature=0.7).with_structured_output(TesterFeedback)
+    
+    llm = gemini_2_flash(temperature=0.4).with_structured_output(TesterFeedback)
     prompt = TESTER_PROMPT[tester].format(complete_problem=complete_problem.model_dump_json())
     response = llm.invoke(prompt)
     return response
@@ -49,7 +50,7 @@ def reflect_on_feedback(complete_problem: CompleteProblem ,tester_feedbacks: Lis
     Reflects on tester feedback
     """
     # SỬA LỖI: Lớp output được sửa thành CompleteProblem
-    llm = gemini_2_flash(temperature=0.7).with_structured_output(CompleteProblem)
+    llm = gemini_2_5_pro(temperature=0.5).with_structured_output(CompleteProblem)
     
     # SỬA LỖI: Chuyển đổi list các Pydantic object thành JSON string đúng cách
     feedbacks_json = json.dumps([fb.model_dump() for fb in tester_feedbacks])

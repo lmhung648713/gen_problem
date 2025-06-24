@@ -1,41 +1,48 @@
-# gen_problem.py
-
-import json
-from typing import List
 from langgraph.graph import StateGraph, END, START
 from structures import *
 from functions import *
 from prompts import TESTER_PROMPT
+from testcase_processor import create_testcase
+import os
+import shutil
 
 # ============================================================================
 # AGENT NODES (CÁC NODE TRONG GRAPH)
 # ============================================================================
 
+def log_node(state: ProblemGenerationState) -> ProblemGenerationState:
+    # print(state.display())
+    with open("logs.txt", "a") as f:
+        f.write(state.display())
+
 def create_problemideas_node(state: ProblemGenerationState) -> ProblemGenerationState:
     """Tạo ra các ý tưởng từ các chuyên gia khác nhau."""
     print("--- 💡 NODE: Generating new problem ideas ---")
-    print(state)
+    # log_node(state)
     
-    # SỬA ĐỔI: Dùng state.key
     state.ideas = [
         create_problem_idea("data_structure_expert", state.requirements),
         create_problem_idea("algorithm_strategist", state.requirements),
         create_problem_idea("math_game_master", state.requirements)
     ]
+    for idea in state.ideas:
+        print(idea.display())
     if state.regeneration_needed:
         state.regeneration_count += 1
         print(f"--- 🔄 REGENERATION: Count: {state.regeneration_count} ---")
-    state.regeneration_needed = False
+        state.regeneration_needed = False
     return state
 
 def select_best_idea_node(state: ProblemGenerationState) ->ProblemGenerationState:
     """Đánh giá và lựa chọn ý tưởng tốt nhất."""
     print("--- 🧐 NODE: Evaluating and selecting the best idea ---")
-    print(state)
+    # log_node(state)
     
-    # SỬA ĐỔI: Dùng state.key
+    
     evaluations = [evaluate_problem_idea(state.requirements, idea) for idea in state.ideas]
     state.expert_evaluations = evaluations
+    for evaluation in evaluations:
+        print(evaluation.display())
 
     recommended_pairs = []
     for i, evaluation in enumerate(evaluations):
@@ -65,38 +72,42 @@ def select_best_idea_node(state: ProblemGenerationState) ->ProblemGenerationStat
 def complete_problem_node(state: ProblemGenerationState) ->ProblemGenerationState:
     """Hoàn thiện ý tưởng đã chọn thành một bài toán đầy đủ."""
     print("--- ✍️ NODE: Developing the selected idea into a complete problem ---")
-    print(state)
-    
-    # SỬA ĐỔI: Dùng state.key
-    state.complete_problem = complete_problem(state.selected_idea)
+    # log_node(state)
+    state.complete_problem = complete_problem(state.selected_idea, state.requirements)
+    print(state.complete_problem.display())
     return state
 
 def run_test_problem_node(state: ProblemGenerationState) ->ProblemGenerationState:
     """Thực hiện kiểm thử bài toán hoàn chỉnh với các tester ảo."""
     print("--- 🧪 NODE: Running virtual testers on the complete problem ---")
-    print(state)
+    # log_node(state)
     
-    # SỬA ĐỔI: Dùng state.key
+    
     state.tester_feedbacks = []
     
     for tester_name in TESTER_PROMPT.keys():
         print(f"--- Testing with: {tester_name} ---")
         tester_feedback = test_problem(tester_name, state.complete_problem)
+        print(tester_feedback.display())
         state.tester_feedbacks.append(tester_feedback)
+
+    # tester_feedback = evaluate_difficult(state.selected_idea, state.complete_problem)
+    # state.tester_feedbacks.append(tester_feedback)
         
     return state
 
 def refine_complete_problem_node(state: ProblemGenerationState) ->ProblemGenerationState:
     """Cải thiện bài toán dựa trên feedback của tester."""
     print("--- 🛠️ NODE: Refining the problem based on feedback ---")
-    print(state)
+    # log_node(state)
     
-    # SỬA ĐỔI: Dùng state.key
+    
     state.revision_count += 1
     print(f"--- 🔄 REVISION: Count: {state.revision_count} ---")
 
     refined_problem = reflect_on_feedback(state.complete_problem, state.tester_feedbacks)
     state.complete_problem = refined_problem
+    print(refined_problem.display())
     
     state.tester_feedbacks = []
     state.revision_needed = False
@@ -104,12 +115,10 @@ def refine_complete_problem_node(state: ProblemGenerationState) ->ProblemGenerat
     return state
 
 def finalize_problem_node(state: ProblemGenerationState) -> ProblemGenerationState:
-    print(state)
     """Node cuối cùng để chuyển kết quả."""
     if state.status == "failed":
         return state
     print("\n--- 🎉 NODE: Finalizing Problem ---")
-    state.final_problem = state.complete_problem
     state.status = "completed"
     state.current_step = "finished"
     return state
@@ -132,23 +141,22 @@ def should_refine_problem(state: ProblemGenerationState) -> str:
     """Kiểm tra xem feedback của tester có yêu cầu chỉnh sửa không."""
     print("--- 🤔 ROUTER: Checking tester feedback ---")
     
-    feedbacks = state.tester_feedbacks
+    feedbacks = []
+    for tester_feedback in state.tester_feedbacks:
+        if tester_feedback.bad_feedbacks:
+            feedbacks.append(tester_feedback)
+
     if not feedbacks:
         print("--- ✅ DECISION: No feedback yet. Finalizing problem. ---")
         return "finalize_problem"
         
     # Logic đã đúng: kiểm tra nội dung feedback để quyết định
-    needs_revision = any(fb.improvement_suggestions or fb.ambiguities or fb.edge_case_issues for fb in feedbacks)
+    needs_revision = len(feedbacks) > 0
     
     if needs_revision and state.revision_count < state.max_revisions:
         print(f"--- 👎 DECISION: Issues found. Proceeding to revision {state.revision_count + 1}. ---")
         state.revision_needed = True # Cập nhật cờ ở đây
         return "refine_complete_problem_node" # Sửa tên node cho nhất quán
-    
-    if needs_revision:
-        print(f"--- ⛔️ FAILURE: Issues still exist but max revision limit reached. Halting. ---")
-        state.status = "failed"
-        return "finalize_problem_node"
 
     print("--- 👍 DECISION: Problem is solid. Proceeding to finalization. ---")
     return "finalize_problem_node"
@@ -206,7 +214,15 @@ def build_graph() -> StateGraph:
 # MAIN EXECUTION
 # ============================================================================
 
-def gen(problem_requirements: ProblemRequirements) -> ProblemGenerationState:
+def gen(topic: str, constraints: str, special_requirements: str) -> dict:
+
+    # Khởi tạo yêu cầu bài toán
+    problem_requirements = ProblemRequirements(
+        topic=topic,
+        constraints=constraints,
+        special_requirements=special_requirements
+    )
+
     # Khởi tạo trạng thái ban đầu của Graph
     initial_state = ProblemGenerationState(
         requirements=problem_requirements,
@@ -222,7 +238,6 @@ def gen(problem_requirements: ProblemRequirements) -> ProblemGenerationState:
         revision_needed=False,
         revision_count=0,
         max_revisions=2, # Cho phép sửa đề tối đa 2 lần
-        final_problem=None,
         current_step="start",
         status="in_progress"
     )
@@ -231,28 +246,49 @@ def gen(problem_requirements: ProblemRequirements) -> ProblemGenerationState:
     app = build_graph()
     print("--- 🚀 Starting Problem Generation Workflow ---")
     final_state = app.invoke(initial_state)
+    complete_problem = final_state["complete_problem"]
+    random_cases_program = complete_problem.random_cases_program
+    edge_cases_program = complete_problem.edge_cases_program
+    print(random_cases_program)
+    print(edge_cases_program)
+    print(complete_problem.solution_code)
+    testcase = []
+    case_id = 1
+    # nếu folder INPUT/OUTPUT tồn tại thì xóa đi
+    if os.path.exists("INPUT"):
+        shutil.rmtree("INPUT")
+    if os.path.exists("OUTPUT"):
+        shutil.rmtree("OUTPUT")
+    for program in random_cases_program:
+        print(program)
+        for _ in range(3):
+            case = create_testcase(case_id = case_id, solution_code = complete_problem.solution_code, input_code = program)
+            case_id += 1
+            testcase.append(case)
+    for program in edge_cases_program:
+        print(program)
+        case = create_testcase(case_id = case_id, solution_code = complete_problem.solution_code, input_code = program)
+        case_id += 1
+        testcase.append(case)
 
-    # In kết quả cuối cùng
-    print("\n\n--- ✨ WORKFLOW COMPLETE ✨ ---")
-    if final_state["status"] == "completed":
-        print("✅ Successfully generated a complete problem!")
-        final_problem = final_state["final_problem"]
-        # In ra dưới dạng JSON cho dễ đọc
-        print("\n--- FINAL PROBLEM ---")
-        print(final_problem.model_dump_json(indent=2))
-    else:
-        print("❌ Failed to generate a problem.")
-        print("--- Last step:",final_state["current_step"], "---")
-        print("--- Reason: Status is", final_state["status"], "---")
+    print("--- ✅ Problem Generation Workflow Completed ---")
+
+    return {
+        "title": complete_problem.title,
+        "problem_statement": complete_problem.problem_statement,
+        "input_specification": complete_problem.input_specification,
+        "output_specification": complete_problem.output_specification,
+        "sample_cases": complete_problem.sample_cases,
+        "solution_approach": complete_problem.solution_approach,
+        "solution_code": complete_problem.solution_code,
+        "testcase": testcase
+    }
 
 if __name__ == "__main__":
     # Định nghĩa yêu cầu ban đầu cho bài toán
-    problem_requirements = ProblemRequirements(
-        difficulty_level="Easy",
-        topic="Math, Array",
-        constraints="Bài toán xoay quanh các số nguyên dương <= 1000",
-        special_requirements="Đề cập đến học sinh và kẹo"
-    )
+    topic="constructive algorithm"
+    constraints="n<=100000"
+    special_requirements="Bài toán vận dụng tư duy với mảng 1 chiều"
 
     # Tạo bài toán
-    gen(problem_requirements)
+    gen(topic, constraints, special_requirements)
