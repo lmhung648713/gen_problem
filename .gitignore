@@ -10,3 +10,5 @@ inputs
 outputs
 jugde
 UI
+problem.json
+new.py

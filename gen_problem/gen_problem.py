@@ -1,294 +1,507 @@
 from langgraph.graph import StateGraph, END, START
 from structures import *
-from functions import *
-from prompts import TESTER_PROMPT
+from services import ProblemGenerationService
 from testcase_processor import create_testcase
 import os
 import shutil
+from typing import List
 
 # ============================================================================
-# AGENT NODES (CÁC NODE TRONG GRAPH)
+# CONFIGURATION AND CONSTANTS
 # ============================================================================
 
-def log_node(state: ProblemGenerationState) -> ProblemGenerationState:
-    # print(state.display())
-    with open("logs.txt", "a") as f:
-        f.write(state.display())
+# Creator types for problem idea generation
+CREATOR_TYPES = [
+    "data_structure_expert",
+    "algorithm_strategist", 
+    "math_game_master"
+]
 
-def create_problemideas_node(state: ProblemGenerationState) -> ProblemGenerationState:
-    """Tạo ra các ý tưởng từ các chuyên gia khác nhau."""
-    print("--- 💡 NODE: Generating new problem ideas ---")
-    # log_node(state)
-    
-    state.ideas = [
-        create_problem_idea("data_structure_expert", state.requirements),
-        create_problem_idea("algorithm_strategist", state.requirements),
-        create_problem_idea("math_game_master", state.requirements)
-    ]
-    for idea in state.ideas:
-        print(idea.display())
-    if state.regeneration_needed:
-        state.regeneration_count += 1
-        print(f"--- 🔄 REGENERATION: Count: {state.regeneration_count} ---")
-        state.regeneration_needed = False
-    return state
+# Tester types for problem evaluation
+TESTER_TYPES = [
+    "Statement_Tester",
+    "Solution_Tester", 
+    "Testcase_Tester"
+]
 
-def select_best_idea_node(state: ProblemGenerationState) ->ProblemGenerationState:
-    """Đánh giá và lựa chọn ý tưởng tốt nhất."""
-    print("--- 🧐 NODE: Evaluating and selecting the best idea ---")
-    # log_node(state)
-    
-    
-    evaluations = [evaluate_problem_idea(state.requirements, idea) for idea in state.ideas]
-    state.expert_evaluations = evaluations
-    for evaluation in evaluations:
-        print(evaluation.display())
+# Default workflow limits
+DEFAULT_MAX_REGENERATIONS = 2
+DEFAULT_MAX_REVISIONS = 2
+DEFAULT_RANDOM_CASES_PER_GENERATOR = 3
 
+# ============================================================================
+# SERVICE INITIALIZATION
+# ============================================================================
+
+class WorkflowService:
+    """Service class to handle workflow operations with proper dependency injection."""
+    
+    def __init__(self):
+        self.problem_service = ProblemGenerationService()
+        
+    def create_problem_ideas(self, requirements: ProblemRequirements) -> List[ProblemIdea]:
+        """Generate problem ideas from multiple creators."""
+        ideas = []
+        for creator in CREATOR_TYPES:
+            try:
+                idea = self.problem_service.create_problem_idea(creator, requirements)
+                ideas.append(idea)
+            except Exception as e:
+                print(f"⚠️ Warning: Failed to create idea from {creator}: {e}")
+        return ideas
+    
+    def evaluate_ideas(self, requirements: ProblemRequirements, ideas: List[ProblemIdea]) -> List[ExpertEvaluation]:
+        """Evaluate all problem ideas."""
+        evaluations = []
+        for idea in ideas:
+            try:
+                evaluation = self.problem_service.evaluate_problem_idea(requirements, idea)
+                evaluations.append(evaluation)
+            except Exception as e:
+                print(f"⚠️ Warning: Failed to evaluate idea '{idea.title}': {e}")
+        return evaluations
+    
+    def test_complete_problem(self, problem: CompleteProblem) -> List[TesterFeedback]:
+        """Test complete problem with multiple testers."""
+        feedbacks = []
+        for tester in TESTER_TYPES:
+            try:
+                feedback = self.problem_service.test_problem(tester, problem)
+                feedbacks.append(feedback)
+            except Exception as e:
+                print(f"⚠️ Warning: Failed to test with {tester}: {e}")
+        return feedbacks
+
+# Global service instance
+workflow_service = WorkflowService()
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+def log_state(state: ProblemGenerationState, filename: str = "logs.txt") -> None:
+    """Log current state to file."""
+    try:
+        with open(filename, "a", encoding="utf-8") as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"STEP: {state.current_step}\n")
+            f.write(f"STATUS: {state.status}\n")
+            f.write(f"{'='*80}\n")
+            f.write(state.display())
+            f.write("\n")
+    except Exception as e:
+        print(f"Failed to log state: {e}")
+
+def print_section_header(title: str, icon: str = "🔹") -> None:
+    """Print formatted section header."""
+    print(f"\n{icon} {title.upper()} {icon}")
+    print("-" * (len(title) + 6))
+
+def select_best_recommended_idea(ideas: List[ProblemIdea], evaluations: List[ExpertEvaluation]) -> tuple[ProblemIdea, ExpertEvaluation]:
+    """Select the best recommended idea from evaluations."""
     recommended_pairs = []
-    for i, evaluation in enumerate(evaluations):
+    
+    for idea, evaluation in zip(ideas, evaluations):
         if evaluation.is_recommended:
-            recommended_pairs.append({"evaluation": evaluation, "idea": state.ideas[i]})
-            print(f"--- ✅ ACCEPTED: Idea '{state.ideas[i].title}' with score {evaluation.total_score} ---")
+            recommended_pairs.append((idea, evaluation))
+            print(f"✅ ACCEPTED: '{idea.title}' (Score: {evaluation.total_score})")
         else:
-            print(f"--- ❌ REJECTED: Idea '{state.ideas[i].title}' ---")
+            print(f"❌ REJECTED: '{idea.title}' - {evaluation.rejection_reason}")
     
     if not recommended_pairs:
-        print("--- ⚠️ WARNING: No ideas were accepted by the curator. ---")
-        if state.regeneration_count >= state.max_regenerations:
-            print("--- ⛔️ FAILURE: Maximum regeneration limit reached. Halting. ---")
-            state.status = "failed"
-            return state
-        state.regeneration_needed = True
-        state.selected_idea = None
-        return state
+        raise ValueError("No ideas were accepted by the curator")
     
-    best_pair = max(recommended_pairs, key=lambda p: p["evaluation"].total_score)
+    # Select idea with highest score
+    best_idea, best_evaluation = max(recommended_pairs, key=lambda x: x[1].total_score)
+    return best_idea, best_evaluation
+
+def analyze_feedback_severity(feedbacks: List[TesterFeedback]) -> bool:
+    """Analyze if feedback indicates serious issues requiring revision."""
+    serious_issues = 0
     
-    state.selected_idea = best_pair["idea"]
-    print(f"--- ⭐ SELECTED: Best idea is '{state.selected_idea.title}' with score {best_pair['evaluation'].total_score} ---")
+    for feedback in feedbacks:
+        # Count serious issues
+        if not feedback.solved:
+            serious_issues += 2  # Not solving is serious
+        if feedback.understanding_clarity < 3:
+            serious_issues += 1  # Poor clarity
+        if len(feedback.bad_feedbacks) > 2:
+            serious_issues += 1  # Multiple negative feedbacks
+        if len(feedback.ambiguities) > 0:
+            serious_issues += 1  # Ambiguities present
+        if len(feedback.edge_case_issues) > 0:
+            serious_issues += 1  # Edge case problems
     
+    # Require revision if more than 2 serious issues total
+    return serious_issues > 2
+
+def generate_testcases(problem: CompleteProblem, case_id_start: int = 1) -> List[dict]:
+    """Generate test cases from the complete problem."""
+    testcases = []
+    case_id = case_id_start
+    
+    # Generate random test cases
+    for generator in problem.random_test_generator:
+        for _ in range(DEFAULT_RANDOM_CASES_PER_GENERATOR):
+            try:
+                case = create_testcase(
+                    case_id=case_id,
+                    solution_code=problem.code,
+                    input_code=generator
+                )
+                testcases.append(case)
+                case_id += 1
+            except Exception as e:
+                print(f"⚠️ Warning: Failed to generate random test case: {e}")
+    
+    # Generate edge test cases
+    for generator in problem.edge_case_generator:
+        try:
+            case = create_testcase(
+                case_id=case_id,
+                solution_code=problem.code,
+                input_code=generator
+            )
+            testcases.append(case)
+            case_id += 1
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to generate edge test case: {e}")
+    
+    return testcases
+
+# ============================================================================
+# GRAPH NODES
+# ============================================================================
+
+def create_problem_ideas_node(state: ProblemGenerationState) -> ProblemGenerationState:
+    """Generate new problem ideas from multiple expert creators."""
+    print_section_header("Generating Problem Ideas", "💡")
+    
+    # Update state
+    state.current_step = "idea_generation"
+    
+    # Generate ideas
+    state.ideas = workflow_service.create_problem_ideas(state.requirements)
+    
+    # Display generated ideas
+    for i, idea in enumerate(state.ideas, 1):
+        print(f"\n--- Idea {i}: {idea.title} ---")
+        print(idea.display())
+    
+    # Handle regeneration tracking
+    if state.regeneration_needed:
+        state.regeneration_count += 1
+        state.regeneration_needed = False
+        print(f"\n🔄 Regeneration #{state.regeneration_count} completed")
+    
+    log_state(state)
     return state
 
-def complete_problem_node(state: ProblemGenerationState) ->ProblemGenerationState:
-    """Hoàn thiện ý tưởng đã chọn thành một bài toán đầy đủ."""
-    print("--- ✍️ NODE: Developing the selected idea into a complete problem ---")
-    # log_node(state)
-    state.complete_problem = complete_problem(state.selected_idea, state.requirements)
-    print(state.complete_problem.display())
-    return state
-
-def run_test_problem_node(state: ProblemGenerationState) ->ProblemGenerationState:
-    """Thực hiện kiểm thử bài toán hoàn chỉnh với các tester ảo."""
-    print("--- 🧪 NODE: Running virtual testers on the complete problem ---")
-    # log_node(state)
+def evaluate_and_select_idea_node(state: ProblemGenerationState) -> ProblemGenerationState:
+    """Evaluate all ideas and select the best one."""
+    print_section_header("Evaluating and Selecting Best Idea", "🧐")
     
+    # Update state
+    state.current_step = "expert_evaluation"
     
-    state.tester_feedbacks = []
+    # Evaluate all ideas
+    state.expert_evaluations = workflow_service.evaluate_ideas(state.requirements, state.ideas)
     
-    for tester_name in TESTER_PROMPT.keys():
-        print(f"--- Testing with: {tester_name} ---")
-        tester_feedback = test_problem(tester_name, state.complete_problem)
-        print(tester_feedback.display())
-        state.tester_feedbacks.append(tester_feedback)
-
-    # tester_feedback = evaluate_difficult(state.selected_idea, state.complete_problem)
-    # state.tester_feedbacks.append(tester_feedback)
+    # Display evaluations
+    for i, evaluation in enumerate(state.expert_evaluations, 1):
+        print(f"\n--- Evaluation {i} ---")
+        print(evaluation.display())
+    
+    # Try to select best idea
+    try:
+        best_idea, best_evaluation = select_best_recommended_idea(state.ideas, state.expert_evaluations)
+        state.selected_idea = best_idea
+        state.current_step = "idea_selected"
         
+        print(f"\n⭐ SELECTED: '{best_idea.title}' with score {best_evaluation.total_score}")
+        
+    except ValueError as e:
+        print(f"\n⚠️ WARNING: {e}")
+        
+        # Check if we can regenerate
+        if state.regeneration_count >= state.max_regenerations:
+            print("⛔ FAILURE: Maximum regeneration limit reached")
+            state.status = ProcessStatus.FAILED
+            state.current_step = "failed"
+        else:
+            print(f"🔄 Marking for regeneration (attempt {state.regeneration_count + 1}/{state.max_regenerations})")
+            state.regeneration_needed = True
+            state.selected_idea = None
+            state.current_step = "regeneration_needed"
+    
+    log_state(state)
     return state
 
-def refine_complete_problem_node(state: ProblemGenerationState) ->ProblemGenerationState:
-    """Cải thiện bài toán dựa trên feedback của tester."""
-    print("--- 🛠️ NODE: Refining the problem based on feedback ---")
-    # log_node(state)
+def develop_complete_problem_node(state: ProblemGenerationState) -> ProblemGenerationState:
+    """Develop the selected idea into a complete problem."""
+    print_section_header("Developing Complete Problem", "✍️")
     
+    # Update state
+    state.current_step = "problem_development"
     
-    state.revision_count += 1
-    print(f"--- 🔄 REVISION: Count: {state.revision_count} ---")
+    # Develop complete problem
+    state.complete_problem = workflow_service.problem_service.complete_problem(
+        state.selected_idea, 
+        state.requirements
+    )
+    
+    print(f"\n--- Complete Problem: {state.complete_problem.title} ---")
+    print(state.complete_problem.display())
+    
+    log_state(state)
+    return state
 
-    refined_problem = reflect_on_feedback(state.complete_problem, state.tester_feedbacks)
-    state.complete_problem = refined_problem
-    print(refined_problem.display())
+def test_problem_node(state: ProblemGenerationState) -> ProblemGenerationState:
+    """Test the complete problem with virtual testers."""
+    print_section_header("Testing Problem with Virtual Testers", "🧪")
     
+    # Update state
+    state.current_step = "testing"
+    
+    # Test with multiple testers
+    state.tester_feedbacks = workflow_service.test_complete_problem(state.complete_problem)
+    
+    # Display feedback
+    for i, feedback in enumerate(state.tester_feedbacks, 1):
+        print(f"\n--- Tester Feedback {i} ---")
+        print(feedback.display())
+    
+    log_state(state)
+    return state
+
+def refine_problem_node(state: ProblemGenerationState) -> ProblemGenerationState:
+    """Refine the problem based on tester feedback."""
+    print_section_header("Refining Problem Based on Feedback", "🛠️")
+    
+    # Update state
+    state.current_step = "revision"
+    state.revision_count += 1
+    
+    print(f"🔄 Revision #{state.revision_count}")
+    
+    # Refine the problem
+    state.complete_problem = workflow_service.problem_service.reflect_on_feedback(
+        state.complete_problem, 
+        state.tester_feedbacks
+    )
+    
+    print(f"\n--- Refined Problem: {state.complete_problem.title} ---")
+    print(state.complete_problem.display())
+    
+    # Reset for next testing round
     state.tester_feedbacks = []
     state.revision_needed = False
     
+    log_state(state)
     return state
 
 def finalize_problem_node(state: ProblemGenerationState) -> ProblemGenerationState:
-    """Node cuối cùng để chuyển kết quả."""
-    if state.status == "failed":
+    """Finalize the problem generation process."""
+    print_section_header("Finalizing Problem", "🎉")
+    
+    if state.status == ProcessStatus.FAILED:
+        print("❌ Problem generation failed")
         return state
-    print("\n--- 🎉 NODE: Finalizing Problem ---")
-    state.status = "completed"
-    state.current_step = "finished"
+    
+    # Update state to completed
+    state.status = ProcessStatus.COMPLETED
+    state.current_step = "completed"
+    
+    print("✅ Problem generation completed successfully!")
+    
+    # Display final summary
+    summary = state.get_summary()
+    print("\n--- Final Summary ---")
+    for key, value in summary.items():
+        print(f"{key}: {value}")
+    
+    log_state(state)
     return state
 
 # ============================================================================
-# ROUTING FUNCTIONS (CÁC HÀM ĐIỀU HƯỚNG)
+# ROUTING FUNCTIONS
 # ============================================================================
 
-def should_regenerate_ideas(state: ProblemGenerationState) -> str:
-    """Kiểm tra xem Curator có yêu cầu tạo lại ý tưởng không."""
-    print("--- 🤔 ROUTER: Checking curator's decision ---")
-    # Logic đã đúng: nếu không có ý tưởng nào được chọn, tạo lại.
-    if state.regeneration_needed:
-        print("--- 👎 DECISION: No idea accepted. Regenerating ideas. ---")
-        return "create_problemideas_node" # Sửa tên node cho nhất quán
-    print("--- 👍 DECISION: Idea selected. Proceeding to completion. ---")
-    return "complete_problem_node" # Sửa tên node cho nhất quán
-
-def should_refine_problem(state: ProblemGenerationState) -> str:
-    """Kiểm tra xem feedback của tester có yêu cầu chỉnh sửa không."""
-    print("--- 🤔 ROUTER: Checking tester feedback ---")
+def route_after_evaluation(state: ProblemGenerationState) -> str:
+    """Route after idea evaluation - either regenerate or proceed."""
+    print_section_header("Routing Decision After Evaluation", "🤔")
     
-    feedbacks = []
-    for tester_feedback in state.tester_feedbacks:
-        if tester_feedback.bad_feedbacks:
-            feedbacks.append(tester_feedback)
+    if state.status == ProcessStatus.FAILED:
+        print("❌ Process failed - routing to finalization")
+        return "finalize"
+    
+    if state.regeneration_needed:
+        print("🔄 No acceptable ideas - routing to regeneration")
+        return "regenerate"
+    
+    print("✅ Good idea selected - routing to development")
+    return "develop"
 
-    if not feedbacks:
-        print("--- ✅ DECISION: No feedback yet. Finalizing problem. ---")
-        return "finalize_problem"
-        
-    # Logic đã đúng: kiểm tra nội dung feedback để quyết định
-    needs_revision = len(feedbacks) > 0
+def route_after_testing(state: ProblemGenerationState) -> str:
+    """Route after testing - either refine or finalize."""
+    print_section_header("Routing Decision After Testing", "🤔")
+    
+    # Analyze feedback to determine if revision is needed
+    needs_revision = analyze_feedback_severity(state.tester_feedbacks)
     
     if needs_revision and state.revision_count < state.max_revisions:
-        print(f"--- 👎 DECISION: Issues found. Proceeding to revision {state.revision_count + 1}. ---")
-        state.revision_needed = True # Cập nhật cờ ở đây
-        return "refine_complete_problem_node" # Sửa tên node cho nhất quán
-
-    print("--- 👍 DECISION: Problem is solid. Proceeding to finalization. ---")
-    return "finalize_problem_node"
-
+        print(f"🔧 Issues found - routing to revision (attempt {state.revision_count + 1}/{state.max_revisions})")
+        state.revision_needed = True
+        return "refine"
+    
+    if needs_revision and state.revision_count >= state.max_revisions:
+        print("⚠️ Issues found but max revisions reached - proceeding to finalization")
+    else:
+        print("✅ Problem is ready - routing to finalization")
+    
+    return "finalize"
 
 # ============================================================================
-# GRAPH DEFINITION (ĐỊNH NGHĨA GRAPH)
+# GRAPH CONSTRUCTION
 # ============================================================================
 
-def build_graph() -> StateGraph:
+def build_problem_generation_graph() -> StateGraph:
+    """Build and return the problem generation workflow graph."""
     workflow = StateGraph(ProblemGenerationState)
-
-    # Thêm các node vào graph
-    workflow.add_node("create_problemideas_node", create_problemideas_node)
-    workflow.add_node("select_best_idea_node", select_best_idea_node)
-    workflow.add_node("complete_problem_node", complete_problem_node)
-    workflow.add_node("run_test_problem_node", run_test_problem_node)
-    workflow.add_node("refine_complete_problem_node", refine_complete_problem_node)
-    workflow.add_node("finalize_problem_node", finalize_problem_node)
-
-    # Đặt điểm bắt đầu
-    workflow.set_entry_point("create_problemideas_node")
-
-    # Thêm các cạnh điều kiện (conditional edges)
+    
+    # Add nodes
+    workflow.add_node("create_ideas", create_problem_ideas_node)
+    workflow.add_node("evaluate_select", evaluate_and_select_idea_node)
+    workflow.add_node("develop_problem", develop_complete_problem_node)
+    workflow.add_node("test_problem", test_problem_node)
+    workflow.add_node("refine_problem", refine_problem_node)
+    workflow.add_node("finalize", finalize_problem_node)
+    
+    # Set entry point
+    workflow.set_entry_point("create_ideas")
+    
+    # Add edges
+    workflow.add_edge("create_ideas", "evaluate_select")
+    workflow.add_edge("develop_problem", "test_problem")
+    workflow.add_edge("refine_problem", "test_problem")
+    workflow.add_edge("finalize", END)
+    
+    # Add conditional edges
     workflow.add_conditional_edges(
-        "select_best_idea_node",
-        should_regenerate_ideas,
+        "evaluate_select",
+        route_after_evaluation,
         {
-            "create_problemideas_node": "create_problemideas_node", # Loop
-            "complete_problem_node": "complete_problem_node",
-            "end": END
+            "regenerate": "create_ideas",
+            "develop": "develop_problem", 
+            "finalize": "finalize"
         }
     )
+    
     workflow.add_conditional_edges(
-        "run_test_problem_node",
-        should_refine_problem,
+        "test_problem",
+        route_after_testing,
         {
-            "refine_complete_problem_node": "refine_complete_problem_node", # Loop
-            "finalize_problem_node": "finalize_problem_node",
-            "end": END
+            "refine": "refine_problem",
+            "finalize": "finalize"
         }
     )
-
-    # Thêm các cạnh thông thường
-    workflow.add_edge("create_problemideas_node", "select_best_idea_node")
-    workflow.add_edge("complete_problem_node", "run_test_problem_node")
-    workflow.add_edge("refine_complete_problem_node", "run_test_problem_node") # Sau khi sửa, phải test lại
-    workflow.add_edge("finalize_problem_node", END)
-
-    # Biên dịch graph
-    app = workflow.compile()
-    return app
+    
+    return workflow.compile()
 
 # ============================================================================
-# MAIN EXECUTION
+# MAIN EXECUTION FUNCTION
 # ============================================================================
 
-def gen(topic: str, constraints: str, special_requirements: str) -> dict:
-
-    # Khởi tạo yêu cầu bài toán
-    problem_requirements = ProblemRequirements(
+def generate_problem(
+    topic: str,
+    constraints: str = "",
+    special_requirements: str = "",
+    max_regenerations: int = DEFAULT_MAX_REGENERATIONS,
+    max_revisions: int = DEFAULT_MAX_REVISIONS
+) -> dict:
+    """
+    Generate a complete competitive programming problem.
+    
+    Args:
+        topic: Main topic (e.g., "Graph", "DP", "String", "Math")
+        constraints: Problem constraints (e.g., "n ≤ 10^5, time ≤ 2s")
+        special_requirements: Additional requirements
+        max_regenerations: Maximum idea regeneration attempts
+        max_revisions: Maximum problem revision attempts
+        
+    Returns:
+        Dictionary containing the complete problem or empty dict if failed
+    """
+    print_section_header("Starting Problem Generation Workflow", "🚀")
+    
+    # Initialize requirements
+    requirements = ProblemRequirements(
         topic=topic,
         constraints=constraints,
         special_requirements=special_requirements
     )
-
-    # Khởi tạo trạng thái ban đầu của Graph
+    
+    # Initialize state
     initial_state = ProblemGenerationState(
-        requirements=problem_requirements,
-        ideas=[],
-        expert_evaluations=[],
-        selected_idea=None,
-        regeneration_needed=False,
-        regeneration_count=0,
-        max_regenerations=2, # Cho phép tạo lại ý tưởng tối đa 2 lần
-        complete_problem=None,
-        testcases=[],
-        tester_feedbacks=[],
-        revision_needed=False,
-        revision_count=0,
-        max_revisions=2, # Cho phép sửa đề tối đa 2 lần
-        current_step="start",
-        status="in_progress"
+        requirements=requirements,
+        max_regenerations=max_regenerations,
+        max_revisions=max_revisions,
+        current_step="initialization",
+        status=ProcessStatus.IN_PROGRESS
     )
     
-    # Xây dựng và chạy Graph
-    app = build_graph()
-    print("--- 🚀 Starting Problem Generation Workflow ---")
+    # Build and run workflow
+    app = build_problem_generation_graph()
     final_state = app.invoke(initial_state)
-    complete_problem = final_state["complete_problem"]
-    random_cases_program = complete_problem.random_cases_program
-    edge_cases_program = complete_problem.edge_cases_program
-    print(random_cases_program)
-    print(edge_cases_program)
-    print(complete_problem.solution_code)
-    testcase = []
-    case_id = 1
-    # nếu folder INPUT/OUTPUT tồn tại thì xóa đi
-    if os.path.exists("INPUT"):
-        shutil.rmtree("INPUT")
-    if os.path.exists("OUTPUT"):
-        shutil.rmtree("OUTPUT")
-    for program in random_cases_program:
-        print(program)
-        for _ in range(3):
-            case = create_testcase(case_id = case_id, solution_code = complete_problem.solution_code, input_code = program)
-            case_id += 1
-            testcase.append(case)
-    for program in edge_cases_program:
-        print(program)
-        case = create_testcase(case_id = case_id, solution_code = complete_problem.solution_code, input_code = program)
-        case_id += 1
-        testcase.append(case)
-
-    print("--- ✅ Problem Generation Workflow Completed ---")
-
+    
+    # Check final status
+    if final_state.status == ProcessStatus.FAILED:
+        print_section_header("Problem Generation Failed", "❌")
+        return {}
+    
+    # Extract complete problem
+    problem = final_state.complete_problem
+    if not problem:
+        print_section_header("No Complete Problem Generated", "⚠️")
+        return {}
+    
+    # Generate test cases
+    print_section_header("Generating Test Cases", "📝")
+    testcases = generate_testcases(problem)
+    print(f"Generated {len(testcases)} test cases")
+    
+    print_section_header("Problem Generation Completed Successfully", "✅")
+    
+    # Return formatted result
     return {
-        "title": complete_problem.title,
-        "problem_statement": complete_problem.problem_statement,
-        "input_specification": complete_problem.input_specification,
-        "output_specification": complete_problem.output_specification,
-        "sample_cases": complete_problem.sample_cases,
-        "solution_approach": complete_problem.solution_approach,
-        "solution_code": complete_problem.solution_code,
-        "testcase": testcase
+        "title": problem.title,
+        "problem_statement": problem.problem_statement,
+        "input_specification": problem.input_specification,
+        "output_specification": problem.output_specification,
+        "sample_cases": [case.model_dump() for case in problem.test_cases],
+        "solution_approach": problem.approach,
+        "solution_code": problem.code,
+        "time_complexity": problem.time_complexity,
+        "space_complexity": problem.space_complexity,
+        "testcases": testcases,
+        "generation_summary": final_state.get_summary()
     }
 
-if __name__ == "__main__":
-    # Định nghĩa yêu cầu ban đầu cho bài toán
-    topic="constructive algorithm"
-    constraints="n<=100000"
-    special_requirements="Bài toán vận dụng tư duy với mảng 1 chiều"
+# ============================================================================
+# EXAMPLE USAGE
+# ============================================================================
 
-    # Tạo bài toán
-    gen(topic, constraints, special_requirements)
+if __name__ == "__main__":
+    # Example usage
+    result = generate_problem(
+        topic="unweighted graph",
+        constraints="n ≤ 100000",
+        special_requirements="đi ăn sinh nhật, ghé tiệm mua quà"
+    )
+    
+    if result:
+        print(f"\nGenerated problem: {result['title']}")
+        print(f"Test cases: {len(result['testcases'])}")
+        print("Success!")
+    else:
+        print("Failed to generate problem")
