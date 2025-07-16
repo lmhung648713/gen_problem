@@ -8,17 +8,17 @@ validation mechanisms.
 
 import json
 import logging
-from typing import List, Dict, Any, Optional, Union, Callable
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 from abc import ABC, abstractmethod
 
-from models import (
+from structures import (
     ProblemRequirements, ProblemIdea, ExpertEvaluation, 
     CompleteProblem, TesterFeedback
 )
 from prompts import CREATOR_PROMPTS, TESTER_PROMPT, problem_evaluator_prompt, problem_completer_prompt, reflect_prompt
-from structures import o3_mini, gemini_2_5_pro
+from models import o3_mini, gemini_2_5_pro
 
 
 # =============================================================================
@@ -236,13 +236,13 @@ class ProblemCompletionService(BaseLLMService):
     def __init__(self):
         super().__init__(DEFAULT_CONFIGS["completion"])
     
-    def process(self, problem_idea: ProblemIdea, problem_requirements: ProblemRequirements) -> CompleteProblem:
+    def process(self, problem_idea: ProblemIdea, problem_requirements: ProblemRequirements, expert_evaluation: ExpertEvaluation) -> CompleteProblem:
         """Complete a problem idea into a full problem."""
         try:
             self._validate_inputs(problem_idea, problem_requirements)
             
             llm = self._get_llm_instance(CompleteProblem)
-            prompt = self._build_prompt(problem_idea, problem_requirements)
+            prompt = self._build_prompt(problem_idea, problem_requirements, expert_evaluation)
             
             self.logger.info(f"Completing problem: {problem_idea.title}")
             response = self._invoke_with_retry(llm, prompt)
@@ -262,12 +262,13 @@ class ProblemCompletionService(BaseLLMService):
         if not idea.description.strip():
             raise ValidationError("Problem idea description cannot be empty")
     
-    def _build_prompt(self, idea: ProblemIdea, requirements: ProblemRequirements) -> str:
+    def _build_prompt(self, idea: ProblemIdea, requirements: ProblemRequirements, evaluation: ExpertEvaluation) -> str:
         """Build prompt for problem completion."""
         try:
             return problem_completer_prompt.format(
                 problem_idea=idea.model_dump_json(),
-                problem_requirements=requirements.model_dump_json()
+                problem_requirements=requirements.model_dump_json(),
+                expert_evaluation=evaluation.model_dump_json()
             )
         except Exception as e:
             raise PromptError(f"Failed to build completion prompt: {str(e)}")
@@ -278,7 +279,7 @@ class ProblemCompletionService(BaseLLMService):
             raise ValidationError("Completed problem has empty title")
         if not response.problem_statement.strip():
             raise ValidationError("Completed problem has empty statement")
-        if not response.sample_cases:
+        if not response.test_cases:
             raise ValidationError("Completed problem has no sample cases")
 
 
@@ -412,9 +413,9 @@ class ProblemGenerationService:
         """Evaluate a problem idea against requirements."""
         return self.evaluation_service.process(problem_requirements, problem_idea)
     
-    def complete_problem(self, problem_idea: ProblemIdea, problem_requirements: ProblemRequirements) -> CompleteProblem:
+    def complete_problem(self, problem_idea: ProblemIdea, problem_requirements: ProblemRequirements, expert_evaluation: ExpertEvaluation) -> CompleteProblem:
         """Complete a problem idea into a full problem."""
-        return self.completion_service.process(problem_idea, problem_requirements)
+        return self.completion_service.process(problem_idea, problem_requirements, expert_evaluation)
     
     def test_problem(self, tester: str, complete_problem: CompleteProblem) -> TesterFeedback:
         """Test a complete problem using specified tester."""
@@ -455,51 +456,118 @@ def create_service_with_custom_config(configs: Dict[str, LLMConfig]) -> ProblemG
     DEFAULT_CONFIGS.update(configs)
     return ProblemGenerationService()
 
+# Fortmat complete problem to markdown
 
-# =============================================================================
-# Backwards Compatibility (Deprecated)
-# =============================================================================
+from structures import CompleteProblem
+from typing import Tuple
 
-def create_problem_idea(creator: str, problem_requirements: ProblemRequirements) -> ProblemIdea:
-    """Deprecated: Use ProblemGenerationService.create_problem_idea() instead."""
-    import warnings
-    warnings.warn("This function is deprecated. Use ProblemGenerationService.create_problem_idea() instead.", 
-                  DeprecationWarning, stacklevel=2)
-    service = ProblemGenerationService()
-    return service.create_problem_idea(creator, problem_requirements)
+def format_problem_statement(problem: CompleteProblem) -> str:
+    """
+    Chuyển đổi CompleteProblem thành đề bài định dạng markdown
+    """
+    markdown = f"""# {problem.title}
 
+## Đề bài
 
-def evaluate_problem_idea(problem_requirements: ProblemRequirements, problem_idea: ProblemIdea) -> ExpertEvaluation:
-    """Deprecated: Use ProblemGenerationService.evaluate_problem_idea() instead."""
-    import warnings
-    warnings.warn("This function is deprecated. Use ProblemGenerationService.evaluate_problem_idea() instead.", 
-                  DeprecationWarning, stacklevel=2)
-    service = ProblemGenerationService()
-    return service.evaluate_problem_idea(problem_requirements, problem_idea)
+{problem.problem_statement}
 
+## Đầu vào
 
-def complete_problem(problem_idea: ProblemIdea, problem_requirements: ProblemRequirements) -> CompleteProblem:
-    """Deprecated: Use ProblemGenerationService.complete_problem() instead."""
-    import warnings
-    warnings.warn("This function is deprecated. Use ProblemGenerationService.complete_problem() instead.", 
-                  DeprecationWarning, stacklevel=2)
-    service = ProblemGenerationService()
-    return service.complete_problem(problem_idea, problem_requirements)
+{problem.input_specification}
 
+## Đầu ra
 
-def test_problem(tester: str, complete_problem: CompleteProblem) -> TesterFeedback:
-    """Deprecated: Use ProblemGenerationService.test_problem() instead."""
-    import warnings
-    warnings.warn("This function is deprecated. Use ProblemGenerationService.test_problem() instead.", 
-                  DeprecationWarning, stacklevel=2)
-    service = ProblemGenerationService()
-    return service.test_problem(tester, complete_problem)
+{problem.output_specification}
 
+## Ví dụ
 
-def reflect_on_feedback(complete_problem: CompleteProblem, tester_feedbacks: List[TesterFeedback]) -> CompleteProblem:
-    """Deprecated: Use ProblemGenerationService.reflect_on_feedback() instead."""
-    import warnings
-    warnings.warn("This function is deprecated. Use ProblemGenerationService.reflect_on_feedback() instead.", 
-                  DeprecationWarning, stacklevel=2)
-    service = ProblemGenerationService()
-    return service.reflect_on_feedback(complete_problem, tester_feedbacks)
+"""
+    
+    # Thêm các test case mẫu
+    sample_cases = [tc for tc in problem.test_cases if tc.is_sample]
+    
+    for i, test_case in enumerate(sample_cases, 1):
+        markdown += f"""### Ví dụ {i}
+
+**Đầu vào:**
+```
+{test_case.input_data}
+```
+
+**Đầu ra:**
+```
+{test_case.expected_output}
+```
+
+**Giải thích:**
+{test_case.explanation}
+
+"""
+    
+    return markdown.strip()
+
+def format_solution(problem: CompleteProblem) -> str:
+    """
+    Chuyển đổi CompleteProblem thành lời giải định dạng markdown
+    """
+    markdown = f"""# Lời giải: {problem.title}
+
+## Phân tích bài toán
+
+{problem.approach}
+
+## Độ phức tạp
+
+### Thời gian
+{problem.time_complexity}
+
+### Không gian
+{problem.space_complexity}
+
+## Code Implementation
+
+```python
+{problem.code}
+```
+
+## Test Cases
+
+"""
+    
+    # Thêm tất cả test cases với kết quả mong đợi
+    for i, test_case in enumerate(problem.test_cases, 1):
+        case_type = "Sample" if test_case.is_sample else "Edge Case" if test_case.is_edge_case else "Test Case"
+        markdown += f"""### {case_type} {i}
+
+**Input:**
+```
+{test_case.input_data}
+```
+
+**Expected Output:**
+```
+{test_case.expected_output}
+```
+
+**Explanation:**
+{test_case.explanation}
+
+"""
+    
+    return markdown.strip()
+
+def convert_problem_to_markdown(problem: CompleteProblem) -> Tuple[str, str]:
+    """
+    Hàm chính: chuyển đổi CompleteProblem thành tuple (đề bài, lời giải) 
+    đều ở định dạng markdown
+    
+    Args:
+        problem: CompleteProblem object
+        
+    Returns:
+        Tuple[str, str]: (đề bài markdown, lời giải markdown)
+    """
+    problem_statement = format_problem_statement(problem)
+    solution = format_solution(problem)
+    
+    return problem_statement, solution

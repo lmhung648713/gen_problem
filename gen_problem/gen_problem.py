@@ -1,9 +1,7 @@
-from langgraph.graph import StateGraph, END, START
+from langgraph.graph import StateGraph, END
 from structures import *
-from services import ProblemGenerationService
+from functions import ProblemGenerationService, convert_problem_to_markdown
 from testcase_processor import create_testcase
-import os
-import shutil
 from typing import List
 
 # ============================================================================
@@ -216,8 +214,9 @@ def evaluate_and_select_idea_node(state: ProblemGenerationState) -> ProblemGener
     try:
         best_idea, best_evaluation = select_best_recommended_idea(state.ideas, state.expert_evaluations)
         state.selected_idea = best_idea
+        state.best_evaluation = best_evaluation
         state.current_step = "idea_selected"
-        
+
         print(f"\n⭐ SELECTED: '{best_idea.title}' with score {best_evaluation.total_score}")
         
     except ValueError as e:
@@ -244,10 +243,15 @@ def develop_complete_problem_node(state: ProblemGenerationState) -> ProblemGener
     # Update state
     state.current_step = "problem_development"
     
+    # Display evaluations
+    print("Best Evaluation:")
+    print(state.best_evaluation.display())
+    
     # Develop complete problem
     state.complete_problem = workflow_service.problem_service.complete_problem(
-        state.selected_idea, 
-        state.requirements
+        problem_idea=state.selected_idea, 
+        expert_evaluation=state.best_evaluation,
+        problem_requirements=state.requirements
     )
     
     print(f"\n--- Complete Problem: {state.complete_problem.title} ---")
@@ -418,7 +422,7 @@ def generate_problem(
     special_requirements: str = "",
     max_regenerations: int = DEFAULT_MAX_REGENERATIONS,
     max_revisions: int = DEFAULT_MAX_REVISIONS
-) -> dict:
+) -> Dict[str, Any]:
     """
     Generate a complete competitive programming problem.
     
@@ -453,6 +457,7 @@ def generate_problem(
     # Build and run workflow
     app = build_problem_generation_graph()
     final_state = app.invoke(initial_state)
+    final_state = ProblemGenerationState(**final_state)
     
     # Check final status
     if final_state.status == ProcessStatus.FAILED:
@@ -472,19 +477,13 @@ def generate_problem(
     
     print_section_header("Problem Generation Completed Successfully", "✅")
     
+    problem_statement, solution = convert_problem_to_markdown(problem)
+
     # Return formatted result
     return {
-        "title": problem.title,
-        "problem_statement": problem.problem_statement,
-        "input_specification": problem.input_specification,
-        "output_specification": problem.output_specification,
-        "sample_cases": [case.model_dump() for case in problem.test_cases],
-        "solution_approach": problem.approach,
-        "solution_code": problem.code,
-        "time_complexity": problem.time_complexity,
-        "space_complexity": problem.space_complexity,
-        "testcases": testcases,
-        "generation_summary": final_state.get_summary()
+        "problem_statement": problem_statement,
+        "solution": solution,
+        "testcases": testcases
     }
 
 # ============================================================================
@@ -494,14 +493,10 @@ def generate_problem(
 if __name__ == "__main__":
     # Example usage
     result = generate_problem(
-        topic="unweighted graph",
-        constraints="n ≤ 100000",
-        special_requirements="đi ăn sinh nhật, ghé tiệm mua quà"
+        topic="Mảng 2 chiều",
+        constraints="",
+        special_requirements="Kết hợp cấu trúc dữ liệu và kỹ thuật xử lý mảng ở mức cơ bản"
     )
-    
-    if result:
-        print(f"\nGenerated problem: {result['title']}")
-        print(f"Test cases: {len(result['testcases'])}")
-        print("Success!")
-    else:
-        print("Failed to generate problem")
+
+    # Print result
+    print(result)

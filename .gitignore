@@ -8,7 +8,10 @@
 
 inputs
 outputs
+INPUT
+OUTPUT
+
 jugde
 UI
-problem.json
+problem.*
 new.py

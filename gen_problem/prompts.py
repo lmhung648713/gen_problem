@@ -585,7 +585,7 @@ Tiếng Việt
 - **Competitive Readiness**: Contest-deployment ready với professional standards
 
 ## TASK DEFINITION
-Biến đổi problem idea thành complete competitive programming problem với **professional quality**, **contest readiness**, và **educational excellence**.
+Dựa vào yêu cầu từ người dùng và những đánh giá về ý tưởng của các chuyên giá, hãy biến đổi ý tưởng đề bài thành complete competitive programming problem với **professional quality**, **contest readiness**, và **educational excellence**.
 
 <problem_requirements>
 {problem_requirements}
@@ -594,6 +594,10 @@ Biến đổi problem idea thành complete competitive programming problem với
 <problemidea>
 {problem_idea}
 </problemidea>
+
+<expert_evaluation>
+{expert_evaluation}
+</expert_evaluation>
 
 ## ENHANCED DEVELOPMENT PROCESS
 
@@ -694,6 +698,7 @@ Trả về CompleteProblem instance với enhanced professional quality:
 - `edge_case_generator`: Systematic edge case creation program
 
 **CRITICAL**: Đối với LIST fields, return empty list [] nếu không có content.
+**QUAN TRỌNG**: KHÔNG ĐƯỢC IN RA BẤT KỲ LỜI GIẢI THÍCH NÀO TRONG CÁC ĐOẠN CODE SINH TEST, CHỈ ĐƯỢC IN NHỮNG THỨ MÀ FORMAT_INPUT CỦA BÀI TOÁN YÊU CẦU!!!
 
 ## IMPLEMENTATION STANDARDS
 
@@ -1410,6 +1415,7 @@ Trả về một CompleteProblem object hoàn chỉnh với các trường:
 - **edge_case_generator**: List[str] - Code sinh edge cases
 
 **QUAN TRỌNG**: ĐỐI VỚI CÁC TRƯỜNG CÓ KIỂU DỮ LIỆU LIST, NẾU KHÔNG CÓ GIÁ TRỊ GÌ THÌ HÃY TRẢ VỀ LIST RỖNG [] !
+**QUAN TRỌNG**: kHÔNG ĐƯỢC IN RA BẤT KỲ LỜI GIẢI THÍCH NÀO TRONG CÁC ĐOẠN CODE SINH TEST, CHỈ ĐƯỢC IN NHỮNG THỨ MÀ FORMAT_INPUT CỦA BÀI TOÁN YÊU CẦU!!!
 
 ## 🎯 SUCCESS METRICS
 

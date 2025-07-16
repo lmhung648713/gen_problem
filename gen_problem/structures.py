@@ -5,7 +5,7 @@ This module contains all the data models for a competitive programming problem
 generation system, including requirements, ideas, evaluations, and testing phases.
 """
 
-from typing import List, Optional, Literal, Dict, Any
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, model_validator
 from enum import Enum
 import math
@@ -24,7 +24,6 @@ class OverallRating(str, Enum):
     NEEDS_WORK = "NEEDS_WORK"
     REJECT = "REJECT"
 
-
 class CompetitiveViability(str, Enum):
     """Competitive programming contest viability levels."""
     HIGH = "HIGH"
@@ -34,9 +33,9 @@ class CompetitiveViability(str, Enum):
 
 class ProcessStatus(str, Enum):
     """Process status for problem generation workflow."""
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
+    IN_PROGRESS = "IN PROGRESS"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
 
 
 # =============================================================================
@@ -49,7 +48,7 @@ class BaseModel(BaseModel):
     class Config:
         use_enum_values = True
         validate_assignment = True
-        extra = "forbid"
+        # extra = "forbid"
     
     def display(self) -> str:
         """Return a formatted string representation of the model."""
@@ -79,7 +78,7 @@ class ProblemRequirements(BaseModel):
     """Requirements specification for problem generation."""
     
     topic: str = Field(
-        default="Toán, Implementation",
+        default="Math, Implementation",
         description="Main topic: Graph, DP, String, Math, etc."
     )
     constraints: str = Field(
@@ -87,7 +86,7 @@ class ProblemRequirements(BaseModel):
         description="Constraints: n ≤ 10^5, time ≤ 2s, etc."
     )
     special_requirements: Optional[str] = Field(
-        default="",
+        default="Easy",
         description="Other special requirements"
     )
 
@@ -270,7 +269,7 @@ class ExpertEvaluation(BaseModel, DisplayableMixin):
         """Display expert evaluation with detailed formatting."""
         sections = [
             f"=== Expert Evaluation: {self.problem_title} ===",
-            f"Overall Rating: {self.overall_rating.value}",
+            f"Overall Rating: {self.overall_rating}",
             f"Total Score: {self.total_score}/100",
             "",
             "Detailed Scoring:",
@@ -280,7 +279,7 @@ class ExpertEvaluation(BaseModel, DisplayableMixin):
             f"  Requirement Alignment: {self.requirement_alignment}/15",
             f"  Development Potential: {self.development_potential}/5",
             "",
-            f"Competitive Viability: {self.competitive_viability.value}",
+            f"Competitive Viability: {self.competitive_viability}",
             f"Recommended: {self.is_recommended}",
             f"Decision Reasoning: {self.decision_reasoning}"
         ]
@@ -316,7 +315,7 @@ class CompleteProblem(BaseModel, DisplayableMixin):
     
     # Examples
     test_cases: List[TestCase] = Field(
-        ..., min_length=1,
+        ..., min_length=2,
         description="List of test cases (minimum 2)"
     )
     
@@ -325,7 +324,7 @@ class CompleteProblem(BaseModel, DisplayableMixin):
         ..., 
         description="Analysis of approach and algorithm for solving"
     )
-    code: str = Field(..., description="Sample source code in Python")
+    code: str = Field(..., description="The optimal source code follow the approach in Python for this problem")
     time_complexity: str = Field(..., description="Time complexity of solution")
     space_complexity: str = Field(..., description="Space complexity of solution")
     
@@ -467,12 +466,13 @@ class ProblemGenerationState(BaseModel):
     # Expert evaluation
     expert_evaluations: List[ExpertEvaluation] = Field(default_factory=list)
     selected_idea: Optional[ProblemIdea] = None
+    best_evaluation: Optional[ExpertEvaluation] = None
     regeneration_needed: bool = False
     regeneration_count: int = 0
     max_regenerations: int
     
     # Problem development
-    complete_problem: Optional[CompleteProblem] = None
+    complete_problem: CompleteProblem = None
     
     # Testing phase
     tester_feedbacks: List[TesterFeedback] = Field(default_factory=list)
@@ -488,8 +488,8 @@ class ProblemGenerationState(BaseModel):
     def validate_selected_idea_exists(self):
         """Ensure selected idea exists in the ideas list."""
         if self.selected_idea:
-            idea_dicts = [idea.model_dump() for idea in self.ideas]
-            if self.selected_idea.model_dump() not in idea_dicts:
+            idea_list = [idea.model_dump() for idea in self.ideas]
+            if self.selected_idea.model_dump() not in idea_list:
                 raise ValueError("selected_idea must be one of the ideas in the 'ideas' list")
         return self
     
@@ -497,7 +497,7 @@ class ProblemGenerationState(BaseModel):
         """Get a summary of the current state."""
         return {
             "current_step": self.current_step,
-            "status": self.status.value,
+            "status": self.status,
             "ideas_count": len(self.ideas),
             "evaluations_count": len(self.expert_evaluations),
             "has_selected_idea": self.selected_idea is not None,
@@ -563,7 +563,7 @@ class ProblemGenerationState(BaseModel):
         sections.extend([
             "\n[Process Summary]",
             f"Current Step: {self.current_step}",
-            f"Status: {self.status.value}",
+            f"Status: {self.status}",
             f"Regeneration: {self.regeneration_needed} ({self.regeneration_count}/{self.max_regenerations})",
             f"Revision: {self.revision_needed} ({self.revision_count}/{self.max_revisions})"
         ])
@@ -588,23 +588,3 @@ def create_initial_state(
         current_step="initialization",
         status=ProcessStatus.IN_PROGRESS
     )
-
-
-def validate_state_transition(
-    current_state: ProblemGenerationState,
-    next_step: str
-) -> bool:
-    """Validate if a state transition is allowed."""
-    valid_transitions = {
-        "initialization": ["idea_generation"],
-        "idea_generation": ["expert_evaluation"],
-        "expert_evaluation": ["idea_selection", "idea_regeneration"],
-        "idea_selection": ["problem_development"],
-        "idea_regeneration": ["idea_generation"],
-        "problem_development": ["testing"],
-        "testing": ["completion", "revision"],
-        "revision": ["problem_development"],
-        "completion": []
-    }
-    
-    return next_step in valid_transitions.get(current_state.current_step, [])
