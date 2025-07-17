@@ -90,32 +90,6 @@ class ProblemRequirements(BaseModel):
         description="Other special requirements"
     )
 
-
-class TestCase(BaseModel):
-    """Structured representation of a test case."""
-    
-    input_data: str = Field(..., description="Input data for test case")
-    expected_output: str = Field(..., description="Expected output")
-    explanation: Optional[str] = Field(None, description="Test case explanation")
-    is_sample: bool = Field(False, description="Whether this is a sample case")
-    is_edge_case: bool = Field(False, description="Whether this is an edge case")
-    
-    def display(self) -> str:
-        """Display test case information in a formatted way."""
-        lines = [
-            "--- Test Case ---",
-            f"Input: {self.input_data}",
-            f"Expected Output: {self.expected_output}"
-        ]
-        
-        if self.explanation:
-            lines.append(f"Explanation: {self.explanation}")
-        
-        lines.append(f"Sample: {self.is_sample}, Edge Case: {self.is_edge_case}")
-        
-        return "\n".join(lines) + "\n"
-
-
 class ProblemIdea(BaseModel, DisplayableMixin):
     """Model representing a problem idea from creators."""
     
@@ -299,67 +273,229 @@ class ExpertEvaluation(BaseModel, DisplayableMixin):
         return "\n".join(sections) + "\n"
 
 
-class CompleteProblem(BaseModel, DisplayableMixin):
-    """Complete problem description ready for use."""
+class DifficultyLevel(str, Enum):
+    """Difficulty levels aligned with competitive programming standards."""
+    DIV2_A = "Div2 A (800-1000)"
+    DIV2_B = "Div2 B (1000-1200)"
+    DIV2_C = "Div2 C (1300-1500)"
+    DIV2_D = "Div2 D (1500-1700)"
+    DIV2_E = "Div2 E (1700-1900)"
+    DIV2_F = "Div2 F (1900-2100)"
+    DIV1_C = "Div1 C (2200+)"
+
+class TestCase(BaseModel):
+    """Individual test case with input/output."""
+    input: str = Field(..., description="Test input")
+    output: str = Field(..., description="Expected output")
+    explanation: Optional[str] = Field(None, description="Explanation of the test case")
     
-    # Basic information
+    def display(self) -> str:
+        """Display formatted test case."""
+        result = f"Input:\n{self.input}\n\nOutput:\n{self.output}"
+        if self.explanation:
+            result += f"\n\nExplanation:\n{self.explanation}"
+        return result
+
+class Subtask(BaseModel):
+    """Individual subtask with specific constraints."""
+    name: str = Field(..., description="Subtask name (e.g., 'Subtask 1')")
+    points: int = Field(..., description="Points for this subtask (percentage)")
+    constraints: str = Field(..., description="Specific constraints for this subtask")
+    description: str = Field(..., description="What this subtask tests")
+    expected_approach: str = Field(..., description="Expected solution approach")
+    time_complexity: str = Field(..., description="Expected time complexity")
+
+class SolutionApproach(BaseModel):
+    """Individual solution approach."""
+    name: str = Field(..., description="Approach name")
+    description: str = Field(..., description="Detailed explanation")
+    complexity: str = Field(..., description="Time and space complexity")
+    code: str = Field(..., description="Implementation code")
+    language: str = Field(default="python", description="Programming language")
+    suitable_for: List[str] = Field(default_factory=list, description="Which subtasks this solves")
+
+class Editorial(BaseModel):
+    """Complete editorial with detailed analysis."""
+    problem_analysis: str = Field(..., description="Analysis of problem requirements")
+    key_insights: List[str] = Field(..., description="Critical insights for solving")
+    solution_progression: str = Field(..., description="Step-by-step solution development")
+    proof_of_correctness: Optional[str] = Field(None, description="Mathematical proof")
+    implementation_details: str = Field(..., description="Important coding considerations")
+    common_pitfalls: List[str] = Field(default_factory=list, description="Common mistakes to avoid")
+    alternative_approaches: List[str] = Field(default_factory=list, description="Other valid solutions")
+
+class TestGenerator(BaseModel):
+    """Test case generator program."""
+    name: str = Field(..., description="Generator name")
+    description: str = Field(..., description="What this generator creates")
+    code: str = Field(..., description="Generator source code")
+    language: str = Field(default="python", description="Programming language")
+    target_subtasks: List[str] = Field(default_factory=list, description="Which subtasks this generates for")
+
+class CompleteProblem(BaseModel):
+    """Complete problem description ready for contest deployment."""
+    
+    # Basic Information
     title: str = Field(..., description="Problem title")
+    difficulty: DifficultyLevel = Field(..., description="Problem difficulty level")
+    algorithm_categories: List[str] = Field(
+        ..., min_length=1, description="Primary algorithm categories. Ex: ['Data Structures', 'Greedy', ...]"
+    )
+    estimated_solve_time: int = Field(..., description="Estimated solve time in minutes")
+    
+    # Problem Statement
     problem_statement: str = Field(
-        ..., 
-        description="Detailed problem statement embedded in a story"
+        ..., description="Complete problem statement with engaging context"
     )
     
-    # I/O specifications
+    # I/O Specifications
     input_specification: str = Field(..., description="Detailed input format description")
     output_specification: str = Field(..., description="Detailed output format description")
+    constraints: str = Field(..., description="Problem constraints and bounds")
+    
+    # Subtasks
+    subtasks: List[Subtask] = Field(
+        ..., min_length=1, description="Progressive difficulty subtasks"
+    )
     
     # Examples
     test_cases: List[TestCase] = Field(
-        ..., min_length=2,
-        description="List of test cases (minimum 2)"
+        ..., min_length=2, description="Sample test cases with explanations"
     )
     
-    # Solution
-    approach: str = Field(
-        ..., 
-        description="Analysis of approach and algorithm for solving"
+    # Solutions
+    solution_approaches: List[SolutionApproach] = Field(
+        ..., min_length=1, description="Multiple solution approaches"
     )
-    code: str = Field(..., description="The optimal source code follow the approach in Python for this problem")
-    time_complexity: str = Field(..., description="Time complexity of solution")
-    space_complexity: str = Field(..., description="Space complexity of solution")
     
-    # Test case generators
-    random_test_generator: List[str] = Field(
-        default_factory=list,
-        description="Programs to generate random test cases"
+    # Editorial
+    editorial: Editorial = Field(..., description="Complete editorial")
+    
+    # Test Generation
+    test_generators: List[TestGenerator] = Field(
+        default_factory=list, description="Test case generators"
     )
-    edge_case_generator: List[str] = Field(
-        default_factory=list,
-        description="Programs to generate important edge cases"
-    )
+    
+    # Metadata
+    author: Optional[str] = Field(None, description="Problem author")
+    contest_source: Optional[str] = Field(None, description="Contest or platform source")
+    tags: List[str] = Field(default_factory=list, description="Problem tags")
+    
+    def get_optimal_solution(self) -> SolutionApproach:
+        """Get the optimal solution approach."""
+        # Return the solution with lowest complexity or last one (usually optimal)
+        return self.solution_approaches[-1]
+    
+    def get_naive_solution(self) -> SolutionApproach:
+        """Get the naive solution approach."""
+        # Return the first solution (usually naive)
+        return self.solution_approaches[0]
+    
+    def get_solutions_by_subtask(self, subtask_name: str) -> List[SolutionApproach]:
+        """Get all solutions suitable for a specific subtask."""
+        return [
+            sol for sol in self.solution_approaches 
+            if subtask_name in sol.suitable_for
+        ]
     
     def display(self) -> str:
         """Display complete problem with full formatting."""
         sections = [
-            f"=== Complete Problem: {self.title} ===",
-            f"Problem Statement:\n{self.problem_statement}",
-            f"Input Specification:\n{self.input_specification}",
-            f"Output Specification:\n{self.output_specification}",
-            "Sample Cases:"
+            f"=== {self.title} ===",
+            f"Difficulty: {self.difficulty}",
+            f"Categories: {', '.join([cat for cat in self.algorithm_categories])}",
+            f"Estimated Time: {self.estimated_solve_time} minutes",
+            "",
+            "PROBLEM STATEMENT",
+            "=" * 50,
+            self.problem_statement,
+            "",
+            "INPUT",
+            "=" * 50,
+            self.input_specification,
+            "",
+            "OUTPUT", 
+            "=" * 50,
+            self.output_specification,
+            "",
+            "CONSTRAINTS",
+            "=" * 50,
+            self.constraints,
+            "",
+            "SUBTASKS",
+            "=" * 50
         ]
         
-        for case in self.test_cases:
-            sections.append(case.display())
+        for subtask in self.subtasks:
+            sections.append(f"{subtask.name} ({subtask.points}%): {subtask.description}")
+            sections.append(f"  Constraints: {subtask.constraints}")
+            sections.append(f"  Expected: {subtask.expected_approach} - {subtask.time_complexity}")
+            sections.append("")
         
         sections.extend([
-            f"Solution Approach:\n{self.approach}",
-            f"Sample Code:\n{self.code}",
-            f"Complexity: Time {self.time_complexity}, Space {self.space_complexity}"
+            "SAMPLE CASES",
+            "=" * 50
         ])
         
-        return "\n\n".join(sections) + "\n"
-
-
+        for i, case in enumerate(self.test_cases, 1):
+            sections.append(f"Sample {i}:")
+            sections.append(case.display())
+            sections.append("")
+        
+        sections.extend([
+            "EDITORIAL",
+            "=" * 50,
+            "",
+            "Problem Analysis:",
+            self.editorial.problem_analysis,
+            "",
+            "Key Insights:",
+        ])
+        
+        for i, insight in enumerate(self.editorial.key_insights, 1):
+            sections.append(f"{i}. {insight}")
+        
+        sections.extend([
+            "",
+            "Solution Progression:",
+            self.editorial.solution_progression,
+            "",
+            "SOLUTIONS",
+            "=" * 50
+        ])
+        
+        for i, solution in enumerate(self.solution_approaches, 1):
+            sections.append(f"Approach {i}: {solution.name}")
+            sections.append(f"Complexity: {solution.complexity}")
+            sections.append(f"Suitable for: {', '.join(solution.suitable_for)}")
+            sections.append(f"Description: {solution.description}")
+            sections.append("Code:")
+            sections.append(f"```{solution.language}")
+            sections.append(solution.code)
+            sections.append("```")
+            sections.append("")
+        
+        if self.editorial.common_pitfalls:
+            sections.extend([
+                "COMMON PITFALLS",
+                "=" * 50
+            ])
+            for pitfall in self.editorial.common_pitfalls:
+                sections.append(f"• {pitfall}")
+            sections.append("")
+        
+        if self.test_generators:
+            sections.extend([
+                "TEST GENERATORS",
+                "=" * 50
+            ])
+            for generator in self.test_generators:
+                sections.append(f"{generator.name}: {generator.description}")
+                sections.append(f"Target: {', '.join(generator.target_subtasks)}")
+                sections.append("")
+        
+        return "\n".join(sections)
+    
 class TesterFeedback(BaseModel, DisplayableMixin):
     """Feedback from a virtual contestant after attempting the problem."""
     
@@ -448,7 +584,6 @@ class TesterFeedback(BaseModel, DisplayableMixin):
             ])
         
         return "\n".join(sections) + "\n"
-
 
 # =============================================================================
 # Main State Management

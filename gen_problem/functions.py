@@ -18,7 +18,7 @@ from structures import (
     CompleteProblem, TesterFeedback
 )
 from prompts import CREATOR_PROMPTS, TESTER_PROMPT, problem_evaluator_prompt, problem_completer_prompt, reflect_prompt
-from models import o3_mini, gemini_2_5_pro
+from models import gemini_2_5_pro
 
 
 # =============================================================================
@@ -27,7 +27,6 @@ from models import o3_mini, gemini_2_5_pro
 
 class LLMProvider(str, Enum):
     """Available LLM providers for different tasks."""
-    O3_MINI = "o3_mini"
     GEMINI_2_5_PRO = "gemini_2_5_pro"
 
 
@@ -42,10 +41,10 @@ class LLMConfig:
 
 # Default configurations for different tasks
 DEFAULT_CONFIGS = {
-    "idea_creation": LLMConfig(LLMProvider.O3_MINI, temperature=0.7),
+    "idea_creation": LLMConfig(LLMProvider.GEMINI_2_5_PRO, temperature=0.7),
     "evaluation": LLMConfig(LLMProvider.GEMINI_2_5_PRO, temperature=0.6),
     "completion": LLMConfig(LLMProvider.GEMINI_2_5_PRO, temperature=0.6),
-    "testing": LLMConfig(LLMProvider.O3_MINI, temperature=0.5),
+    "testing": LLMConfig(LLMProvider.GEMINI_2_5_PRO, temperature=0.5),
     "reflection": LLMConfig(LLMProvider.GEMINI_2_5_PRO, temperature=0.5)
 }
 
@@ -82,15 +81,13 @@ class BaseLLMService(ABC):
     """Abstract base class for LLM services."""
     
     def __init__(self, config: Optional[LLMConfig] = None):
-        self.config = config or LLMConfig(LLMProvider.O3_MINI)
+        self.config = config or LLMConfig(LLMProvider.GEMINI_2_5_PRO)
         self.logger = logging.getLogger(self.__class__.__name__)
     
     def _get_llm_instance(self, output_type: type):
         """Get configured LLM instance with structured output."""
         try:
-            if self.config.provider == LLMProvider.O3_MINI:
-                return o3_mini().with_structured_output(output_type)
-            elif self.config.provider == LLMProvider.GEMINI_2_5_PRO:
+            if self.config.provider == LLMProvider.GEMINI_2_5_PRO:
                 return gemini_2_5_pro(temperature=self.config.temperature).with_structured_output(output_type)
             else:
                 raise LLMError(f"Unsupported LLM provider: {self.config.provider}")
@@ -459,115 +456,275 @@ def create_service_with_custom_config(configs: Dict[str, LLMConfig]) -> ProblemG
 # Fortmat complete problem to markdown
 
 from structures import CompleteProblem
-from typing import Tuple
 
-def format_problem_statement(problem: CompleteProblem) -> str:
+def convert_problem_to_markdown(complete_problem: CompleteProblem) -> tuple[str, str]:
     """
-    Chuyển đổi CompleteProblem thành đề bài định dạng markdown
-    """
-    markdown = f"""# {problem.title}
-
-## Đề bài
-
-{problem.problem_statement}
-
-## Đầu vào
-
-{problem.input_specification}
-
-## Đầu ra
-
-{problem.output_specification}
-
-## Ví dụ
-
-"""
-    
-    # Thêm các test case mẫu
-    sample_cases = [tc for tc in problem.test_cases if tc.is_sample]
-    
-    for i, test_case in enumerate(sample_cases, 1):
-        markdown += f"""### Ví dụ {i}
-
-**Đầu vào:**
-```
-{test_case.input_data}
-```
-
-**Đầu ra:**
-```
-{test_case.expected_output}
-```
-
-**Giải thích:**
-{test_case.explanation}
-
-"""
-    
-    return markdown.strip()
-
-def format_solution(problem: CompleteProblem) -> str:
-    """
-    Chuyển đổi CompleteProblem thành lời giải định dạng markdown
-    """
-    markdown = f"""# Lời giải: {problem.title}
-
-## Phân tích bài toán
-
-{problem.approach}
-
-## Độ phức tạp
-
-### Thời gian
-{problem.time_complexity}
-
-### Không gian
-{problem.space_complexity}
-
-## Code Implementation
-
-```python
-{problem.code}
-```
-
-## Test Cases
-
-"""
-    
-    # Thêm tất cả test cases với kết quả mong đợi
-    for i, test_case in enumerate(problem.test_cases, 1):
-        case_type = "Sample" if test_case.is_sample else "Edge Case" if test_case.is_edge_case else "Test Case"
-        markdown += f"""### {case_type} {i}
-
-**Input:**
-```
-{test_case.input_data}
-```
-
-**Expected Output:**
-```
-{test_case.expected_output}
-```
-
-**Explanation:**
-{test_case.explanation}
-
-"""
-    
-    return markdown.strip()
-
-def convert_problem_to_markdown(problem: CompleteProblem) -> Tuple[str, str]:
-    """
-    Hàm chính: chuyển đổi CompleteProblem thành tuple (đề bài, lời giải) 
-    đều ở định dạng markdown
+    Generate markdown strings for problem statement and editorial.
     
     Args:
-        problem: CompleteProblem object
+        complete_problem: CompleteProblem instance
         
     Returns:
-        Tuple[str, str]: (đề bài markdown, lời giải markdown)
+        tuple: (problem_markdown, editorial_markdown)
     """
-    problem_statement = format_problem_statement(problem)
-    solution = format_solution(problem)
     
-    return problem_statement, solution
+    # Generate problem statement markdown
+    problem_sections = [
+        f"# {complete_problem.title}",
+        "",
+        f"**Difficulty:** {complete_problem.difficulty}",
+        f"**Categories:** {', '.join([cat for cat in complete_problem.algorithm_categories])}",
+        f"**Estimated Time:** {complete_problem.estimated_solve_time} minutes",
+        ""
+    ]
+    
+    # Add problem statement
+    problem_sections.extend([
+        "## Problem Statement",
+        "",
+        complete_problem.problem_statement,
+        ""
+    ])
+    
+    # Add input specification
+    problem_sections.extend([
+        "## Input",
+        "",
+        complete_problem.input_specification,
+        ""
+    ])
+    
+    # Add output specification  
+    problem_sections.extend([
+        "## Output",
+        "",
+        complete_problem.output_specification,
+        ""
+    ])
+    
+    # Add constraints
+    problem_sections.extend([
+        "## Constraints",
+        "",
+        complete_problem.constraints,
+        ""
+    ])
+    
+    # Add subtasks
+    problem_sections.extend([
+        "## Subtasks",
+        ""
+    ])
+    
+    for subtask in complete_problem.subtasks:
+        problem_sections.extend([
+            f"### {subtask.name} ({subtask.points}%)",
+            "",
+            f"**Description:** {subtask.description}",
+            f"**Constraints:** {subtask.constraints}",
+            f"**Expected Approach:** {subtask.expected_approach}",
+            f"**Time Complexity:** {subtask.time_complexity}",
+            ""
+        ])
+    
+    # Add sample test cases
+    problem_sections.extend([
+        "## Sample Test Cases",
+        ""
+    ])
+    
+    for i, test_case in enumerate(complete_problem.test_cases, 1):
+        problem_sections.extend([
+            f"### Sample {i}",
+            "",
+            "**Input:**",
+            "```",
+            test_case.input,
+            "```",
+            "",
+            "**Output:**",
+            "```", 
+            test_case.output,
+            "```",
+            ""
+        ])
+        
+        if test_case.explanation:
+            problem_sections.extend([
+                "**Explanation:**",
+                test_case.explanation,
+                ""
+            ])
+    
+    # Add metadata if available
+    if complete_problem.author or complete_problem.contest_source or complete_problem.tags:
+        problem_sections.extend([
+            "## Information",
+            ""
+        ])
+        
+        if complete_problem.author:
+            problem_sections.append(f"**Author:** {complete_problem.author}")
+        if complete_problem.contest_source:
+            problem_sections.append(f"**Source:** {complete_problem.contest_source}")
+        if complete_problem.tags:
+            problem_sections.append(f"**Tags:** {', '.join(complete_problem.tags)}")
+        problem_sections.append("")
+    
+    # Generate editorial markdown
+    editorial_sections = [
+        f"# {complete_problem.title} - Editorial",
+        "",
+        f"**Difficulty:** {complete_problem.difficulty}",
+        f"**Categories:** {', '.join([cat for cat in complete_problem.algorithm_categories])}",
+        ""
+    ]
+    
+    # Add problem analysis
+    editorial_sections.extend([
+        "## Problem Analysis",
+        "",
+        complete_problem.editorial.problem_analysis,
+        ""
+    ])
+    
+    # Add key insights
+    editorial_sections.extend([
+        "## Key Insights",
+        ""
+    ])
+    
+    for i, insight in enumerate(complete_problem.editorial.key_insights, 1):
+        editorial_sections.append(f"{i}. {insight}")
+    editorial_sections.append("")
+    
+    # Add solution progression
+    editorial_sections.extend([
+        "## Solution Progression",
+        "",
+        complete_problem.editorial.solution_progression,
+        ""
+    ])
+    
+    # Add proof of correctness if available
+    if complete_problem.editorial.proof_of_correctness:
+        editorial_sections.extend([
+            "## Proof of Correctness",
+            "",
+            complete_problem.editorial.proof_of_correctness,
+            ""
+        ])
+    
+    # Add implementation details
+    editorial_sections.extend([
+        "## Implementation Details",
+        "",
+        complete_problem.editorial.implementation_details,
+        ""
+    ])
+    
+    # Add solution approaches
+    editorial_sections.extend([
+        "## Solution Approaches",
+        ""
+    ])
+    
+    for i, solution in enumerate(complete_problem.solution_approaches, 1):
+        editorial_sections.extend([
+            f"### Approach {i}: {solution.name}",
+            "",
+            f"**Complexity:** {solution.complexity}",
+            f"**Suitable for:** {', '.join(solution.suitable_for)}",
+            "",
+            f"**Description:**",
+            solution.description,
+            "",
+            f"**Implementation ({solution.language}):**",
+            f"```{solution.language}",
+            solution.code,
+            "```",
+            ""
+        ])
+    
+    # Add common pitfalls
+    if complete_problem.editorial.common_pitfalls:
+        editorial_sections.extend([
+            "## Common Pitfalls",
+            ""
+        ])
+        
+        for pitfall in complete_problem.editorial.common_pitfalls:
+            editorial_sections.append(f"- {pitfall}")
+        editorial_sections.append("")
+    
+    # Add alternative approaches
+    if complete_problem.editorial.alternative_approaches:
+        editorial_sections.extend([
+            "## Alternative Approaches",
+            ""
+        ])
+        
+        for i, approach in enumerate(complete_problem.editorial.alternative_approaches, 1):
+            editorial_sections.append(f"{i}. {approach}")
+        editorial_sections.append("")
+    
+    # Add test generators if available
+    if complete_problem.test_generators:
+        editorial_sections.extend([
+            "## Test Generators",
+            ""
+        ])
+        
+        for generator in complete_problem.test_generators:
+            editorial_sections.extend([
+                f"### {generator.name}",
+                "",
+                f"**Description:** {generator.description}",
+                f"**Target Subtasks:** {', '.join(generator.target_subtasks)}",
+                "",
+                f"**Code ({generator.language}):**",
+                f"```{generator.language}",
+                generator.code,
+                "```",
+                ""
+            ])
+    
+    # Join sections and return
+    problem_markdown = "\n".join(problem_sections)
+    editorial_markdown = "\n".join(editorial_sections)
+    
+    return problem_markdown, editorial_markdown
+
+# Helper function to save to files
+def save_problem_to_files(complete_problem: CompleteProblem, 
+                         problem_filename: str = None, 
+                         editorial_filename: str = None) -> None:
+    """
+    Save problem and editorial to separate markdown files.
+    
+    Args:
+        complete_problem: CompleteProblem instance
+        problem_filename: Optional filename for problem (default: problem_title.md)
+        editorial_filename: Optional filename for editorial (default: problem_title_editorial.md)
+    """
+    problem_md, editorial_md = convert_problem_to_markdown(complete_problem)
+    
+    # Generate default filenames if not provided
+    if problem_filename is None:
+        safe_title = complete_problem.title.lower().replace(' ', '_').replace('-', '_')
+        problem_filename = f"{safe_title}.md"
+    
+    if editorial_filename is None:
+        safe_title = complete_problem.title.lower().replace(' ', '_').replace('-', '_')
+        editorial_filename = f"{safe_title}_editorial.md"
+    
+    # Save problem statement
+    with open(problem_filename, 'w', encoding='utf-8') as f:
+        f.write(problem_md)
+    
+    # Save editorial
+    with open(editorial_filename, 'w', encoding='utf-8') as f:
+        f.write(editorial_md)
+    
+    print(f"Problem saved to: {problem_filename}")
+    print(f"Editorial saved to: {editorial_filename}")

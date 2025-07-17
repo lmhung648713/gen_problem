@@ -2,6 +2,7 @@ from langchain_openai import AzureChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 from dotenv import load_dotenv
+
 load_dotenv()
 
 def gemini_2_flash(temperature):
@@ -19,7 +20,7 @@ def gemini_2_5_pro(temperature):
         temperature=temperature,
         max_tokens=65000,
         max_retries=3,
-        timeout=60
+        timeout=120
     )
 
 def gpt_4o_mini(temperature=0.7):

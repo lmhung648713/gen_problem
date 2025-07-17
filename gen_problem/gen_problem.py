@@ -139,31 +139,19 @@ def generate_testcases(problem: CompleteProblem, case_id_start: int = 1) -> List
     case_id = case_id_start
     
     # Generate random test cases
-    for generator in problem.random_test_generator:
-        for _ in range(DEFAULT_RANDOM_CASES_PER_GENERATOR):
+    for generator in problem.test_generators:
+        print(generator.code)
+        for _ in range(10 if len(problem.solution_approaches) == 1 else DEFAULT_RANDOM_CASES_PER_GENERATOR):
             try:
                 case = create_testcase(
                     case_id=case_id,
-                    solution_code=problem.code,
-                    input_code=generator
+                    solution_code=problem.solution_approaches[-1].code,
+                    input_code=generator.code
                 )
                 testcases.append(case)
                 case_id += 1
             except Exception as e:
                 print(f"⚠️ Warning: Failed to generate random test case: {e}")
-    
-    # Generate edge test cases
-    for generator in problem.edge_case_generator:
-        try:
-            case = create_testcase(
-                case_id=case_id,
-                solution_code=problem.code,
-                input_code=generator
-            )
-            testcases.append(case)
-            case_id += 1
-        except Exception as e:
-            print(f"⚠️ Warning: Failed to generate edge test case: {e}")
     
     return testcases
 
@@ -471,6 +459,7 @@ def generate_problem(
         return {}
     
     # Generate test cases
+    
     print_section_header("Generating Test Cases", "📝")
     testcases = generate_testcases(problem)
     print(f"Generated {len(testcases)} test cases")
@@ -493,10 +482,18 @@ def generate_problem(
 if __name__ == "__main__":
     # Example usage
     result = generate_problem(
-        topic="Mảng 2 chiều",
+        topic="Implementation",
         constraints="",
-        special_requirements="Kết hợp cấu trúc dữ liệu và kỹ thuật xử lý mảng ở mức cơ bản"
+        special_requirements="Code dễ nhưng đề bài đánh đố"
     )
 
-    # Print result
-    print(result)
+    import json
+
+    id=4
+
+    with open(f"problem_statement{id}.md", "w") as f:
+        f.write(result["problem_statement"])
+    with open(f"solution{id}.md", "w") as f:
+        f.write(result["solution"])
+    with open(f"testcases{id}.json", "w") as f:
+        json.dumps({"testcase": result["testcases"]}, indent=4)
