@@ -479,21 +479,32 @@ def generate_problem(
 # EXAMPLE USAGE
 # ============================================================================
 
-if __name__ == "__main__":
-    # Example usage
+def main():
+    topic = input("Enter problem topic: ")
+    constraints = input("Enter problem constraints: ")
+    special_requirements = input("Enter special requirements: ")
+    
     result = generate_problem(
-        topic="Implementation",
-        constraints="",
-        special_requirements="Code dễ nhưng đề bài đánh đố"
+        topic=topic,
+        constraints=constraints,
+        special_requirements=special_requirements
     )
 
     import json
 
-    id=4
+    id=7
 
-    with open(f"problem_statement{id}.md", "w") as f:
+    with open(f"demo/problem_statement{id}.md", "w") as f:
         f.write(result["problem_statement"])
-    with open(f"solution{id}.md", "w") as f:
+    with open(f"demo/solution{id}.md", "w") as f:
         f.write(result["solution"])
-    with open(f"testcases{id}.json", "w") as f:
-        json.dumps({"testcase": result["testcases"]}, indent=4)
+    with open(f"demo/testcases{id}.txt", "w") as f:
+            f.write(str(json.dumps({"testcase":result["testcases"]})))
+
+if __name__ == "__main__":
+    # Example usage
+    
+    main()
+    
+
+    

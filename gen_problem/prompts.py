@@ -821,6 +821,7 @@ Trả về CompleteProblem instance với enhanced professional quality và stru
     - Language-specific optimizations
     - Mathematical alternatives
     - Approximation algorithms where applicable
+**QUAN TRỌNG**: TOÀN BỘ CODE CỦA CÁC LỜI GIẢI PHẢI VIẾT BẰNG PYTHON, TUÂN THỦ FORMAT INPUT/OUTPUT VÀ PHẢI CHẠY ĐƯỢC NGAY MÀ KHÔNG CẦN CHỈNH SỬA GÌ THÊM
 
 ### Testing Infrastructure
 - `test_generators`: List[TestGenerator(name, description, code, language, target_subtasks)] with comprehensive test creation
@@ -847,6 +848,7 @@ Trả về CompleteProblem instance với enhanced professional quality và stru
     - Memory usage stress testing
     - Time limit boundary testing
     - Large-scale random case generation
+**QUAN TRỌNG**: tOÀN BỘ CODE CỦA test generator phải tuân theo format_input , không in THÊM BẤT KỲ LỜI GIẢI THÍCH NÀO và phải chạy được ra kết quả ngay MÀ KHÔNG CẦN CHỈNH SỬA GÌ THÊM!
 
 ### Quality Assurance Requirements
 - **Algorithm Foundation**: Every component must trace back to solid algorithmic principles
@@ -863,7 +865,6 @@ Trả về CompleteProblem instance với enhanced professional quality và stru
 - **Documentation**: Complete explanations supporting understanding và maintenance
 
 **CRITICAL**: Đối với LIST fields, return empty list [] nếu không có content.
-**QUAN TRỌNG**: Mọi test generator phải tuân theo format_input , không in explanation và phải chạy được ra kết quả ngay!
 **ESSENTIAL**: Mỗi solution approach phải có implementation hoàn chỉnh với complexity analysis.
 
 ## IMPLEMENTATION STANDARDS
@@ -1580,19 +1581,160 @@ Phân tích systematic tất cả feedback theo các categories:
 
 ## 📋 OUTPUT FORMAT
 
-Trả về một CompleteProblem object hoàn chỉnh với các trường:
+Trả về CompleteProblem instance với enhanced professional quality và structure hoàn chỉnh:
 
-- **title**: Tên bài ngắn gọn, súc tích
-- **problem_statement**: Đề bài hoàn chỉnh, rõ ràng
-- **input_specification**: Mô tả input chi tiết
-- **output_specification**: Mô tả output chi tiết
-- **test_cases**: Danh sách các test cases (List[TestCase])
-- **approach**: Cách tiếp cận và phân tích algorithm
-- **code**: Code Python hoàn chỉnh
-- **time_complexity**: Độ phức tạp thời gian
-- **space_complexity**: Độ phức tạp không gian
-- **random_test_generator**: List[str] - Code sinh test cases ngẫu nhiên
-- **edge_case_generator**: List[str] - Code sinh edge cases
+### Core Problem Components
+- `title`: Concise, descriptive name reflecting algorithmic challenge
+  - Format: "[Category] - [Core Challenge]" (e.g., "Graph Traversal - Shortest Path with Obstacles")
+  - Length: 3-8 words, clear algorithmic hint
+  - Avoid generic terms, emphasize unique aspects
+
+- `difficulty`: DifficultyLevel enum value based on algorithmic complexity
+  - Use precise CF-style rating: DIV2_A (800-1000) → DIV1_C (2200+)
+  - Consider implementation complexity, not just algorithm knowledge
+  - Align with intended solving time (20-120 minutes)
+
+- `algorithm_categories`: List[AlgorithmCategory] with 1-3 primary categories
+  - Main algorithm (60-80% of solution): DATA_STRUCTURES, GRAPH, DYNAMIC_PROGRAMMING
+  - Supporting techniques (20-40%): GREEDY, IMPLEMENTATION, NUMBER_THEORY
+  - Avoid generic categorization, focus on core algorithmic insights
+
+- `estimated_solve_time`: Integer representing minutes for target skill level
+  - Div2 A/B: 15-30 minutes
+  - Div2 C/D: 30-60 minutes  
+  - Div2 E/F: 60-120 minutes
+  - Include time for debugging and testing
+
+- `problem_statement`: Complete description với algorithm-appropriate context
+  - Structure: Context setup → Problem definition → Constraints → Examples
+  - Length: 200-500 words for clarity without verbosity
+  - Avoid red herrings, every detail should be algorithmically relevant
+  - Include motivation that naturally leads to target algorithm
+
+- `input_specification`: Precise format compatible với target algorithms
+  - First line: Problem parameters (n, m, k, etc.)
+  - Subsequent lines: Data structure inputs aligned with algorithm needs
+  - Clear data types: integers, strings, coordinates, graphs
+  - Specify 0-indexed vs 1-indexed clearly
+
+- `output_specification`: Exact requirements với formatting specifications
+  - Single line vs multiple lines, exact format
+  - Precision requirements for floating point
+  - Case sensitivity for string outputs
+  - Special output cases (impossible scenarios, multiple solutions)
+
+- `constraints`: Bounds phù hợp với intended algorithmic complexity
+  - Align with target time complexity: O(n²) → n ≤ 1000, O(n log n) → n ≤ 10⁵
+  - Memory constraints reflecting space complexity
+  - Value ranges preventing overflow issues
+  - Special constraints enabling specific optimizations
+
+- `subtasks`: List[Subtask] with progressive difficulty và clear complexity progression
+  - Subtask 1 (20-30%): Brute force approach, small constraints
+  - Subtask 2 (30-40%): Intermediate optimization, moderate constraints
+  - Subtask 3 (40-50%): Full optimal solution, complete constraints
+  - Each subtask should have distinct algorithmic insight
+
+- `test_cases`: List[TestCase] with educational examples demonstrating key insights
+  - 2-4 examples: trivial → typical → edge-case representative
+  - Explanations highlight algorithmic thinking without revealing solution
+  - Cover different aspects: basic case, boundary conditions, algorithmic nuances
+  - Input/output format exactly matching specifications
+
+### Solution Architecture
+- `solution_approaches`: List[SolutionApproach] with comprehensive multi-approach design 
+  - Approach 1: Naive/brute force for initial understanding
+  - Approach 2: Intermediate optimization showing key insight
+  - Approach 3: Optimal solution demonstrating full algorithmic mastery
+  - Each approach includes complexity analysis và implementation
+
+- `editorial`: Editorial object containing complete algorithmic analysis
+  - `problem_analysis`: Detailed breakdown of requirements và algorithmic implications
+    - Input structure analysis và its algorithmic significance
+    - Output requirements và computational challenges
+    - Constraint analysis revealing intended solution approach
+    - Connection between problem context và underlying algorithms
+
+  - `key_insights`: List[str] with critical observations enabling breakthrough
+    - Mathematical observations leading to efficient algorithms
+    - Data structure choices và their impact on complexity
+    - Optimization techniques specific to this problem
+    - Pattern recognition enabling generalization
+
+  - `solution_progression`: Step-by-step development of solution approaches
+    - Start with naive understanding và obvious approaches
+    - Identify bottlenecks và optimization opportunities
+    - Progressive refinement leading to optimal solution
+    - Natural flow from basic to advanced algorithmic thinking
+
+  - `proof_of_correctness`: Mathematical justification of algorithm (optional but recommended)
+    - Formal proof of algorithm correctness
+    - Invariant analysis for complex algorithms
+    - Complexity analysis justification
+    - Edge case handling verification
+
+  - `implementation_details`: Critical coding considerations
+    - Data structure choices và initialization
+    - Loop invariants và boundary conditions
+    - Input/output handling specifics
+    - Optimization tricks và implementation pitfalls
+
+  - `common_pitfalls`: List[str] with typical errors và avoidance strategies
+    - Off-by-one errors in indexing
+    - Integer overflow considerations
+    - Edge case mishandling
+    - Algorithmic misconceptions
+
+  - `alternative_approaches`: List[str] discussing other valid solutions
+    - Different algorithmic approaches với trade-offs
+    - Language-specific optimizations
+    - Mathematical alternatives
+    - Approximation algorithms where applicable
+**QUAN TRỌNG**: TOÀN BỘ CODE CỦA CÁC LỜI GIẢI PHẢI VIẾT BẰNG PYTHON, TUÂN THỦ FORMAT INPUT/OUTPUT VÀ PHẢI CHẠY ĐƯỢC NGAY MÀ KHÔNG CẦN CHỈNH SỬA GÌ THÊM
+
+### Testing Infrastructure
+- `test_generators`: List[TestGenerator(name, description, code, language, target_subtasks)] with comprehensive test creation
+  - `random_test_generator`: General purpose automated generation
+    - Controlled randomness with realistic constraints
+    - Uniform distribution across input space
+    - Configurable parameters for different subtasks
+    - Validation ensuring generated tests are solvable
+
+  - `subtask_specific_generators`: Targeted generators for each difficulty level
+    - Subtask 1: Small, hand-craftable cases
+    - Subtask 2: Medium complexity with specific patterns
+    - Subtask 3: Large-scale stress testing
+    - Each generator optimized for its target subtask
+
+  - `edge_case_generator`: Systematic boundary condition testing
+    - Minimum/maximum constraint values
+    - Degenerate cases (empty inputs, single elements)
+    - Algorithmic edge cases (cycles, disconnected components)
+    - Corner cases specific to the algorithm
+
+  - `stress_tester`: Performance validation under extreme conditions
+    - Worst-case algorithmic scenarios
+    - Memory usage stress testing
+    - Time limit boundary testing
+    - Large-scale random case generation
+**QUAN TRỌNG**: tOÀN BỘ CODE CỦA test generator phải tuân theo format_input , không in THÊM BẤT KỲ LỜI GIẢI THÍCH NÀO và phải chạy được ra kết quả ngay MÀ KHÔNG CẦN CHỈNH SỬA GÌ THÊM!
+
+### Quality Assurance Requirements
+- **Algorithm Foundation**: Every component must trace back to solid algorithmic principles
+- **Progressive Learning**: Each subtask builds naturally on previous insights
+- **Contest Readiness**: All specifications ready for immediate deployment
+- **Educational Value**: Clear skill development path through problem solving
+- **Professional Standards**: Production-quality code và comprehensive documentation
+
+### Implementation Notes
+- **Code Quality**: Clean, readable, professionally commented với defensive programming
+- **Language Support**: Primary Python implementation với optional C++ version
+- **Performance**: Efficient algorithms within complexity bounds
+- **Testing**: Comprehensive validation ensuring correctness across all scenarios
+- **Documentation**: Complete explanations supporting understanding và maintenance
+
+**CRITICAL**: Đối với LIST fields, return empty list [] nếu không có content.
+**ESSENTIAL**: Mỗi solution approach phải có implementation hoàn chỉnh với complexity analysis.
 
 **QUAN TRỌNG**: ĐỐI VỚI CÁC TRƯỜNG CÓ KIỂU DỮ LIỆU LIST, NẾU KHÔNG CÓ GIÁ TRỊ GÌ THÌ HÃY TRẢ VỀ LIST RỖNG [] !
 **QUAN TRỌNG**: kHÔNG ĐƯỢC IN RA BẤT KỲ LỜI GIẢI THÍCH NÀO TRONG CÁC ĐOẠN CODE SINH TEST, CHỈ ĐƯỢC IN NHỮNG THỨ MÀ FORMAT_INPUT CỦA BÀI TOÁN YÊU CẦU!!!
